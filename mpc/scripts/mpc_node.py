@@ -15,6 +15,16 @@ from utils import nearest_point
 
 # TODO CHECK: include needed ROS msg type headers and libraries
 
+# Note on reference trajectories: So, with a B-spline for instance (where you
+# use one of 3 points to control the curvature), you could just represent in
+# memory that trajectory using the 3 points that describe that spline.
+
+# OR, using some resolution "waypoints per meter," you could sample a waypoint
+# from the trajectory / spline at every distance along the spline. Can do this
+# according to velocity and timestep (like what happens inside the MPC
+# controller), or could do this based on some fixed resolution, or based on
+# velocity, etc.
+
 
 @dataclass
 class mpc_config:
@@ -24,15 +34,29 @@ class mpc_config:
 
     # ---------------------------------------------------
     # TODO: you may need to tune the following matrices
+    # This is the vector of control input weights. I.e., how much we penalize
+    # changing each of our control inputs' values by. 
     Rk: list = field(
         default_factory=lambda: np.diag([0.01, 100.0])
     )  # input cost matrix, penalty for inputs - [accel, steering]
+    # This is the vector of control input DIFFERENCE weights. I.e., how much we
+    # penalize large changes for each of our control input values. 
     Rdk: list = field(
         default_factory=lambda: np.diag([0.01, 100.0])
     )  # input difference cost matrix, penalty for change of inputs - [accel, steering]
+    # This is the vector of weights that defines how much we want to weight each
+    # of the state vector differences. I.e., how much cost do we add for large
+    # differences in each our state variables? If we care more about one state
+    # variable than another, then we might place high weight here, as we want
+    # the difference to result in a high cost--therefore hopefully solving for a
+    # control value that yields a smaller difference for that variable.
     Qk: list = field(
         default_factory=lambda: np.diag([13.5, 13.5, 13.0, 5.5])
     )  # state error cost matrix, for the the next (T) prediction time steps [x, y, v, yaw]
+    # This is the vector of weights that defines how important for our state
+    # variables are at the end of the time horizon. I.e., if we want the control
+    # values we pick to get us as close as possible to the desired position T
+    # timesteps away, then more weight should go to those values.
     Qfk: list = field(
         default_factory=lambda: np.diag([13.5, 13.5, 13.0, 5.5])
     )  # final state error matrix, penalty  for the final state constraints: [x, y, v, yaw]
@@ -210,11 +234,31 @@ class MPC(Node):
         #       Add dynamics constraints to the optimization problem
         #       This constraint should be based on a few variables:
         #       self.xk, self.Ak_, self.Bk_, self.uk, and self.Ck_
+
+        # So, we actually get these linearized, descritized vehicle model
+        # equations (in the form of A, B, and C matrices) from the
+        # "get_model_matrix" helper function above.
+
+        # Dvij explained that to "linearize" these models, it's nothing
+        # fancy-- x' = cos(theta), but to linearize this, we can just make a
+        # linear approximation of the function at some point (theta), which will
+        # just give us the tangent line at that theta == a linear function.
+
+        # To descritize the function--that I'm still not sure of. So, if it's
+        # just a matter of taking that tangent line and turning it into a
+        # "discrete" function, then I think that's just a matter of "sampling
+        # points" along that tangent line--I.e., computing values at each of the
+        # discrete timesteps along the tangent line?? Or doing this using the
+        # slope? Something like that. Look at their function to figure out how
+        # this is done.
         
         # TODO: Constraint part 2:
         #       Add constraints on steering, change in steering angle
         #       cannot exceed steering angle speed limit. Should be based on:
         #       self.uk, self.config.MAX_DSTEER, self.config.DTK
+
+        # This is where we specify the constraints. I.e., steering limits,
+        # acceleration limits.
 
         # TODO: Constraint part 3:
         #       Add constraints on upper and lower bounds of states and inputs
