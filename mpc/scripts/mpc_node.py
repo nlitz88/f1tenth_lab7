@@ -101,6 +101,10 @@ class MPC(Node):
         self.init_flag = 0
 
         # initialize MPC problem
+        # This sets up (defines/initializes) the linearized vehicle model, sets
+        # up all other (not part of the vehicle model) linearized constraints,
+        # etc. Also defines the cost funtion. Sets up the CVXPY solver. Only
+        # need to run this once in the beginning to initialize everything.
         self.mpc_prob_init()
 
     def pose_callback(self, pose_msg):
@@ -387,6 +391,7 @@ class MPC(Node):
         A[1, 1] = 1.0
         A[2, 2] = 1.0
         A[3, 3] = 1.0
+        # Below is literally just (effectively) 
         A[0, 2] = self.config.DTK * math.cos(phi)
         A[0, 3] = -self.config.DTK * v * math.sin(phi)
         A[1, 2] = self.config.DTK * math.sin(phi)
