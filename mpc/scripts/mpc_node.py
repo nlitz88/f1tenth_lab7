@@ -170,8 +170,23 @@ class MPC(Node):
         # Formulate and create the finite-horizon optimal control problem (objective function)
         # The FTOCP has the horizon of T timesteps
 
+        # IN THIS STEP, we are putting the objective function together. 
+        # QUESTION: Are we computing the cost here? Or are we just writing the
+        # general functionality for what the cost function will be? I feel like
+        # this is where we'd be computing the VALUE of the cost function.
+        # Rather, we're telling CVXPY how to set up the optimization problem.
+        # What I think this really means is using CVXPYs API to configure all
+        # those weight matrices and difference matrices to actually start the
+        # optimization process. I.e., the solver needs the objective function,
+        # all the optimization variables, and all the constraints (whether
+        # represented as scalars, 1D vectors, or matrices) to set everything up,
+        # as that is the format that it maintains everything in when it performs
+        # the optimization process/algorithm.
+        
+
         # --------------------------------------------------------
-        # TODO: fill in the objectives here, you should be using cvxpy.quad_form() somehwhere
+        # TODO: fill in the objectives here, you should be using
+        # cvxpy.quad_form() somehwhere.
 
         # TODO: Objective part 1: Influence of the control inputs: Inputs u multiplied by the penalty R
 
