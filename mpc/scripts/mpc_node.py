@@ -415,24 +415,8 @@ class MPC(Node):
         # The change per unit of time must not exceed the maximum rate of change
         # of the steering angle from one computed steering angle to the next.
         for i in range(self.config.TK):
-            new_max_steering_rate_constraint = (self.uk[0:i+1] - self.uk[0:i])/self.config.TK <= self.config.MAX_DSTEER
+            new_max_steering_rate_constraint = (self.uk[0:i+1] - self.uk[0:i])/self.config.DTK <= self.config.MAX_DSTEER
             constraints.append(new_max_steering_rate_constraint)
-
-        # First dimension / index is the row we want to select. In this case,
-        # I'm saying that I want to get ALL of the values in the first row.
-
-        # Is there a better way of doing this in a more elementwise way? I COULD
-        # make an "upper bound" and "lower bound" array like shown in the MPC
-        # lecture. I.e., for the bounds on my control values (u) I'd have a 2D
-        # array, where the number of rows == number of control values, and then
-        # number of columns would similarly be the number of timesteps in the
-        # horizon, or the number of solved-for optimal control values (N+1).
-        # I.e., it would have the same dimensions as uk. However, because this
-        # would be a lot of repeated values, I'm not sure that representation is
-        # as useful for this particular use case, right?
-
-        # This is where we specify the constraints. I.e., steering limits,
-        # acceleration limits.
 
         # TODO: Constraint part 3:
         #       Add constraints on upper and lower bounds of states and inputs
@@ -441,6 +425,20 @@ class MPC(Node):
         #       self.uk, self.config.MAX_ACCEL, self.config.MAX_STEER
         
         # -------------------------------------------------------------
+        
+        # Add constraint specifying that the first predicted state is equal to
+        # the current state.
+        constraints.append(self.xk[:, 0] == self.x0k)
+        # Add constraint specifying the max speed (v) we should be able to reach
+        # (as velocity is part of our state).
+        constraints.append(self.xk[2,:] <= self.config.MAX_SPEED)
+        # Add constraint specifying minimum allowable velocity.
+        constraints.append(self.xk[2,:] >= self.config.MIN_SPEED)
+        # Add constraint specifying the maximum acceleration--which is
+        # essentially just the difference in velocity divided by the time in
+        # between each timestep.
+        for i in range(self.config.TK):
+            constraints.append((self.xk[2,i+1] - self.xk[2,i])/self.config.DTK <= self.config.MAX_ACCEL)
 
         # Create the optimization problem in CVXPY and setup the workspace
         # Optimization goal: minimize the objective function
