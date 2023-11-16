@@ -92,6 +92,10 @@ class MPC(Node):
         super().__init__('mpc_node')
         # TODO: create ROS subscribers and publishers
         #       use the MPC as a tracker (similar to pure pursuit)
+
+        # TODO: May have to change this to PoseWithCovarianceStamped.
+        self.__pose_subscriber = self.create_subscription(msg_type=PoseStamped)
+
         # TODO: get waypoints here
         self.waypoints = None
 
@@ -115,6 +119,7 @@ class MPC(Node):
         # TODO: Calculate the next reference trajectory for the next T steps
         #       with current vehicle pose.
         #       ref_x, ref_y, ref_yaw, ref_v are columns of self.waypoints
+        # ref_x, ref_y, ref_yaw, ref_v = (0, 0, 0, 0,)
         ref_path = self.calc_ref_trajectory(self, vehicle_state, ref_x, ref_y, ref_yaw, ref_v)
         x0 = [vehicle_state.x, vehicle_state.y, vehicle_state.v, vehicle_state.yaw]
 
@@ -276,17 +281,28 @@ class MPC(Node):
         # have to make ONE BIGGER MATRIX out of all those.
 
         
-        constraints.append(self.Ak_ @ self.xk <= x_max)
-        constraints.append(self.Ak_ @ self.xk >= x_min)
+        # constraints.append(self.Ak_ @ self.xk <= x_max)
+        # constraints.append(self.Ak_ @ self.xk >= x_min)
 
-        constraints.append(self.Bk_ @ self.uk <= u_max)
-        constraints.append(self.Bk_ @ self.uk >= u_min)
+        # constraints.append(self.Bk_ @ self.uk <= u_max)
+        # constraints.append(self.Bk_ @ self.uk >= u_min)
 
-        constraints.append(self.Ck_ @ ????)
+        # constraints.append(self.Ck_ @ ????)
 
         # OR
 
-        constraints.append(self.Ak_ + self.Bk_ + self.Ck_ @ self.xk) # ????
+        # constraints.append(self.Ak_ + self.Bk_ + self.Ck_ @ self.xk) # ????
+
+        # OR:
+
+        # NOTE: Potential problem, though: For a given predicted state xk[i],
+        # don't we only want to constrain that to the ith A matrix?? Hard to do
+        # though, as the ith A matrix is wrapped up in a block_diag structure,
+        # right?? 
+        for i in range(self.config.TK):
+            constraints.append(self.xk[:, i+1] == self.Ak_ @ self.xk[:, i] + self.Bk_ @ self.uk[:, i] + self.Ck_)
+
+        # Also, have to add constraints for uk values as well!
         
 
         # NOTE: If the above case isn't true, then maybe we just have to
@@ -486,14 +502,22 @@ class MPC(Node):
         :param delta: steering angle: delta_bar
         :return: A, B, C
         """
+        
+        # Note that some of these model matrices (like A) require other values
+        # from the state (like v and yaw). These values come from the reference
+        # trajectory or interpolated, predicted trajectory that starts at the
+        # nearest point on the reference trajectory.
+
+        # Otherwise, these matrices are constructed just like expected. I.e.,
+        # there's a row for every state variable's coefficients corresponding to
+        # each of the other state variables.
+
+        # This funciton doesn't do any special operations on those shaping
+        # operations of anything like that on these matrices directly. Rather,
+        # it returns them in their original, intuitive form.
 
         # State (or system) matrix A, 4x4
         A = np.zeros((self.config.NXK, self.config.NXK))
-        # Says that A is the state matrix. "x" is the current state. A must be
-        # the matrix of coefficients that get multiplied by the state vector.
-        # However, the values of A are computed using the values from the
-        # current state: v, phi.
-        # 
         A[0, 0] = 1.0
         A[1, 1] = 1.0
         A[2, 2] = 1.0
