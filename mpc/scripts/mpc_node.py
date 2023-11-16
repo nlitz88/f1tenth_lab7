@@ -7,6 +7,7 @@ import numpy as np
 import rclpy
 from ackermann_msgs.msg import AckermannDrive, AckermannDriveStamped
 from geometry_msgs.msg import PoseStamped
+from nav_msgs.msg import Path
 from rclpy.node import Node
 from scipy.linalg import block_diag
 from scipy.sparse import block_diag, csc_matrix, diags
@@ -94,7 +95,16 @@ class MPC(Node):
         #       use the MPC as a tracker (similar to pure pursuit)
 
         # TODO: May have to change this to PoseWithCovarianceStamped.
-        self.__pose_subscriber = self.create_subscription(msg_type=PoseStamped)
+        self.__pose_subscriber = self.create_subscription(msg_type=PoseStamped,
+                                                          topic="pose",
+                                                          callback=self.pose_callback,
+                                                          qos_profile=10)
+        
+        self.__path_subscriber = self.create_subscription(msg_type=Path,
+                                                          topic="path",
+                                                          callback=self.__path_callback,
+                                                          qos_profile=10)
+        self.__path = None
 
         # TODO: get waypoints here
         self.waypoints = None
@@ -110,6 +120,14 @@ class MPC(Node):
         # etc. Also defines the cost funtion. Sets up the CVXPY solver. Only
         # need to run this once in the beginning to initialize everything.
         self.mpc_prob_init()
+
+    def __path_callback(self, path_msg: Path) -> None:
+        """Simple callback to store most recently received path message.
+
+        Args:
+            path_msg (Path): Received Path message.
+        """
+        self.__path = path_msg
 
     def pose_callback(self, pose_msg):
         pass
@@ -198,11 +216,13 @@ class MPC(Node):
         # cvxpy.quad_form() somehwhere.
 
         # TODO: Objective part 1: Influence of the control inputs: Inputs u multiplied by the penalty R
-
+        control_value_cost = None
 
         # TODO: Objective part 2: Deviation of the vehicle from the reference trajectory weighted by Q, including final Timestep T weighted by Qf
+        tracking_cost = None
 
         # TODO: Objective part 3: Difference from one control input to the next control input weighted by Rd
+        control_value_change_cost = None
 
         # --------------------------------------------------------
 
