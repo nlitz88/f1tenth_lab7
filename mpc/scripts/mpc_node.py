@@ -194,6 +194,7 @@ class MPC(Node):
 
         # TODO: Objective part 1: Influence of the control inputs: Inputs u multiplied by the penalty R
 
+
         # TODO: Objective part 2: Deviation of the vehicle from the reference trajectory weighted by Q, including final Timestep T weighted by Qf
 
         # TODO: Objective part 3: Difference from one control input to the next control input weighted by Rd
@@ -206,8 +207,13 @@ class MPC(Node):
         B_block = []
         C_block = []
         # init path to zeros
+        # Creates 4x9 matrix. 9 columns for 9 timesteps, where each row in each
+        # column is a different state variable.
         path_predict = np.zeros((self.config.NXK, self.config.TK + 1))
+        # For each timestep, compute a new linearized model matrix set.
         for t in range(self.config.TK):
+            # Pass the velocity (v at index 2) and heading (phi at index 3) and
+            # the steering angle as 0 into the get_model_matrix function.
             A, B, C = self.get_model_matrix(
                 path_predict[2, t], path_predict[3, t], 0.0
             )
@@ -222,6 +228,9 @@ class MPC(Node):
         # [AA] Sparse matrix to CVX parameter for proper stuffing
         # Reference: https://github.com/cvxpy/cvxpy/issues/1159#issuecomment-718925710
         m, n = A_block.shape
+        # NOTE: we create these model coefficient matrices as CVXPY parameters,
+        # as they're not Variables whose value we're trying to optimize, but
+        # instead values that we're simply using in the optimization process.
         self.Annz_k = cvxpy.Parameter(A_block.nnz)
         data = np.ones(self.Annz_k.size)
         rows = A_block.row * n + A_block.col
@@ -253,6 +262,99 @@ class MPC(Node):
         #       Add dynamics constraints to the optimization problem
         #       This constraint should be based on a few variables:
         #       self.xk, self.Ak_, self.Bk_, self.uk, and self.Ck_
+
+        # Above, the sequence of A matrices are generated (as the vehicle model,
+        # while unchanging, its coefficients that are computed with other state
+        # variables (that do change) change, and therefore the A matrix needs to
+        # be recomputed for each of the time steps)). That is done above and the
+        # resulting A matrices are put together and diagonalized.
+
+        # NOTE: So, one idea is that I have to construct that big matrix
+        # mentioned in the lecture by combining each of the A, B, and C blocks.
+        # Ak_, Bk_, Ck_ are all already in that blocked form individually (I
+        # think, according to that block_diag function). Therefore, we'd just
+        # have to make ONE BIGGER MATRIX out of all those.
+
+        
+        constraints.append(self.Ak_ @ self.xk <= x_max)
+        constraints.append(self.Ak_ @ self.xk >= x_min)
+
+        constraints.append(self.Bk_ @ self.uk <= u_max)
+        constraints.append(self.Bk_ @ self.uk >= u_min)
+
+        constraints.append(self.Ck_ @ ????)
+
+        # OR
+
+        constraints.append(self.Ak_ + self.Bk_ + self.Ck_ @ self.xk) # ????
+        
+
+        # NOTE: If the above case isn't true, then maybe we just have to
+        # constrain each of the blocked matrices individually? I.e., 
+
+        # Actually, the model's A matrices aren't just produced above, but they
+        # actually produced the A,B,C matrices evalauted over multiple
+        # timesteps. How does that make any sense? Wouldn't the state model not
+        # change? 
+
+        # I.e., A_block is initially created as a huge matrix, where there is a
+        # smaller A matrix at a particular timestep, and the next timestep's
+        # followed down and to the right from this one. 
+
+        # The linearized (vehicle) state model is produced/provided above via
+        # the get_model_matrix function. Each is provided as a CVXPY parameter.
+
+        # Think elementwise how these constraints work. Each row represents the
+        # constraint on each of the variables within our vehicle's state. I.e.,
+        # one row is x-position, one row is y-position, etc.
+
+        # AND, the relationship between the next state variable value and its
+        # current value and control input are encoded in the coefficients of the
+        # A, B, and C matrices. 
+
+        # This relationship or equation or function for EACH variable of our
+        # state is essentially a constraint. I.e., you're telling the optimizer
+        # that "hey, whatever value you compute for x-position--you must be able
+        # to obtain it from this equation here!"
+
+        # Each variable's "constraint equation" is, therefore, encoded by one of
+        # the rows across the linearized state model's A, B, and C coefficent
+        # matrices.
+
+        # Also worth explaining is that each state variable may be present on
+        # more than one *other* state variables (from z) and multiple *control
+        # variables* (from u). Therefore, this is why there is a column in A for
+        # each state variable in z--because there's a possibility that a state
+        # variable is a function of multiple other state variables (and
+        # therefore has some coefficient multiplied by each of them, whether 0
+        # or some other real number).
+
+        # Likewise, for each control variable (in u), there's a possibility that
+        # a state variable is computed as a function of that control variable,
+        # times some weihgt/coefficient. Similiarly, then, there's a column
+        # in the B matrix for every control variable in our vector u, so as to
+        # allow each state variable's row in B to contain the coefficients that
+        # each state variable's equation uses to scale each control variable by
+        # in the computation of that state variable (just like in A but this
+        # time with control variables).
+
+        # THEN, one step further: Rather than leaving A, B, and C as just normal
+        # matrices--they take them and create diagonal versions of them. WHAT IS
+        # THE LOGIC IN DOING THIS?
+        
+        # I think it has to do with how constraints are evaluated elementwise
+        # when provided as matrices.
+        # https://www.cvxpy.org/examples/basic/quadratic_program.html (see "The
+        # inequality constraint is elementwise.")
+
+        # Therefore, would we get something like:
+        # A @ z = z ?????? 
+        # AND
+        # B @ u = z ???? That doesn't make sense though.
+        # OR
+        # A @ z + B @u + C = z????? Not even sure if that makes sense.
+
+        # NEED TO LOOK UP AND UNDERSTAND WHAT CVXPY'S "@" OPERATOR DOES!!
 
         # So, we actually get these linearized, descritized vehicle model
         # equations (in the form of A, B, and C matrices) from the
@@ -387,11 +489,15 @@ class MPC(Node):
 
         # State (or system) matrix A, 4x4
         A = np.zeros((self.config.NXK, self.config.NXK))
+        # Says that A is the state matrix. "x" is the current state. A must be
+        # the matrix of coefficients that get multiplied by the state vector.
+        # However, the values of A are computed using the values from the
+        # current state: v, phi.
+        # 
         A[0, 0] = 1.0
         A[1, 1] = 1.0
         A[2, 2] = 1.0
         A[3, 3] = 1.0
-        # Below is literally just (effectively) 
         A[0, 2] = self.config.DTK * math.cos(phi)
         A[0, 3] = -self.config.DTK * v * math.sin(phi)
         A[1, 2] = self.config.DTK * math.sin(phi)
