@@ -295,15 +295,30 @@ class MPC(Node):
 
         # OR:
 
+        for i in range(self.config.TK):
+            constraints.append(self.xk[:, i+1] == self.Ak_ @ self.xk[:, i] + self.Bk_ @ self.uk[:, i] + self.Ck_)
+        
         # NOTE: Potential problem, though: For a given predicted state xk[i],
         # don't we only want to constrain that to the ith A matrix?? Hard to do
         # though, as the ith A matrix is wrapped up in a block_diag structure,
-        # right?? 
+        # right?? If this is true, then maybe we'd have something like this:
         for i in range(self.config.TK):
-            constraints.append(self.xk[:, i+1] == self.Ak_ @ self.xk[:, i] + self.Bk_ @ self.uk[:, i] + self.Ck_)
+            # Get the ith "A" matrix out of the block representation of A.
+            a_i = self.Ak_[self.config.NXK*i:self.config.NXK*i + self.config.NXK - 1]
+            new_constraint = self.xk[:i+1] == a_i @ self.xk[:, i]
+            constraints.append()
 
-        # Also, have to add constraints for uk values as well!
+        # NOTE Only problem with this, however, is that after getting "blocked,"
+        # the A-matrix gets put into a sparse representation from
+        # scipy--therefore, I don't think indexing in this way is going to work.
+
+        # Is there a more compact of making this work?
         
+        # NOTE: I still don't think the original way I did it was correct,
+        # either. That way says "take this singular state vector and multiply it
+        # across all N A matrices"--which doesn't make sense, unless there's
+        # some way of just isolating that particular state vector and
+        # encapsulating it in a vector of the original length.
 
         # NOTE: If the above case isn't true, then maybe we just have to
         # constrain each of the blocked matrices individually? I.e., 
@@ -393,6 +408,28 @@ class MPC(Node):
         #       Add constraints on steering, change in steering angle
         #       cannot exceed steering angle speed limit. Should be based on:
         #       self.uk, self.config.MAX_DSTEER, self.config.DTK
+        min_steering_angle_constraint = self.uk[0:] <= self.config.MIN_STEER
+        constraints.append(min_steering_angle_constraint)
+        max_steering_angle_constraint = self.uk[0:] <= self.config.MAX_STEER
+        constraints.append(max_steering_angle_constraint)
+        # The change per unit of time must not exceed the maximum rate of change
+        # of the steering angle from one computed steering angle to the next.
+        for i in range(self.config.TK):
+            new_max_steering_rate_constraint = (self.uk[0:i+1] - self.uk[0:i])/self.config.TK <= self.config.MAX_DSTEER
+            constraints.append(new_max_steering_rate_constraint)
+
+        # First dimension / index is the row we want to select. In this case,
+        # I'm saying that I want to get ALL of the values in the first row.
+
+        # Is there a better way of doing this in a more elementwise way? I COULD
+        # make an "upper bound" and "lower bound" array like shown in the MPC
+        # lecture. I.e., for the bounds on my control values (u) I'd have a 2D
+        # array, where the number of rows == number of control values, and then
+        # number of columns would similarly be the number of timesteps in the
+        # horizon, or the number of solved-for optimal control values (N+1).
+        # I.e., it would have the same dimensions as uk. However, because this
+        # would be a lot of repeated values, I'm not sure that representation is
+        # as useful for this particular use case, right?
 
         # This is where we specify the constraints. I.e., steering limits,
         # acceleration limits.
