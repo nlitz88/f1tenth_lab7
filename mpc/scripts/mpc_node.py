@@ -102,11 +102,68 @@ class MPC(Node):
                                                           topic="path",
                                                           callback=self.__path_callback,
                                                           qos_profile=10)
-        self.__path = None
+        # self.__path = None
+        # TODO: TEMPORARILY hardcoding the path into the node so that we have
+        # something to work with. In the long run, I really want a separate node
+        # to publish a joint trajectory--containing the position of each
+        # waypoint, the velocity, and the heading angle/orientation each one
+        # should have.
+        self.__max_longitudinal_velocity = 4.0
+        self.__min_longitudinal_velocity = 0.3
+        self.__trajectory = [
+            [13.560638427734375,2.7555694580078125],
+            [13.00737476348877,2.4709153175354004],
+            [12.806493759155273,1.7395272254943848],
+            [12.502553939819336,1.0535345077514648],
+            [11.965315818786621,0.6088647842407227],
+            [11.178140640258789,0.31683921813964844],
+            [10.536487579345703,-0.44613075256347656],
+            [10.518616676330566,-1.3454322814941406],
+            [11.093320846557617,-2.232316017150879],
+            [11.869260787963867,-2.6306419372558594],
+            [12.653507232666016,-2.681591033935547],
+            [13.429366111755371,-2.5058536529541016],
+            [14.09465503692627,-2.23138427734375],
+            [14.64012336730957,-1.8782730102539062],
+            [15.353914260864258,-1.2399787902832031],
+            [16.188953399658203,-0.6803398132324219],
+            [17.26852798461914,0.560297966003418],
+            [18.104114532470703,0.9899187088012695],
+            [18.948312759399414,1.8311080932617188],
+            [19.143470764160156,2.903562068939209],
+            [19.13678741455078,3.862104892730713],
+            [18.421070098876953,4.616009712219238],
+            [17.445926666259766,4.943364143371582],
+            [16.599119186401367,4.811524391174316],
+            [16.227771759033203,4.384362697601318],
+            [15.65716552734375,3.8408212661743164],
+            [15.263104438781738,3.125494956970215],
+            [14.539806365966797,2.9095115661621094],
+            [13.69031047821045,2.8717823028564453],
+            [13.113306045532227,2.4780378341674805]
+        ]
+        # Compute heading angle between waypoints.
+        for s in range(len(self.__trajectory) - 1):
+            point1 = self.__trajectory[s]
+            point2 = self.__trajectory[s+1]
+            yaw_between_points_rad = np.arctan2(point2[1] - point1[1], point2[0] - point1[0])
+            self.__trajectory[s].append(yaw_between_points_rad)
+        # Make sure we also compute that angle between the last point and the
+        # first point as well.
+        point1 = self.__trajectory[-1]
+        point2 = self.__trajectory[0]
+        yaw_between_points_rad = np.arctan2(point2[1] - point1[1], point2[0] - point1[0])
+        self.__trajectory[-1].append(yaw_between_points_rad)
 
-        # TODO: get waypoints here
-        self.waypoints = None
+        # For now, add a constant velocity to each waypoint.
+        self.__temp_longitudinal_velocity = 1.0
+        for s in range(len(self.__trajectory)):
+            self.__trajectory[s].append(self.__temp_longitudinal_velocity)
 
+        # Convert the trajectory to a numpy array.
+        self.__trajectory = np.array(self.__trajectory)
+
+        # Instantiate config dataclass.
         self.config = mpc_config()
         self.odelta = None
         self.oa = None
