@@ -236,10 +236,13 @@ class MPC(Node):
         # trajectory weighted by Q, including final Timestep T weighted by Qf
         # Have to add two parts here: one is the weights for the terminal state,
         # and one component for all the rest.
-        # AGAIN: Should we generate 
+        # First, calculate the tracking cost for the first 0--T-1 states.
         tracking_cost = 0
         for i in range(self.config.TK):
-            pass
+            tracking_cost += cvxpy.quad_form(x=self.ref_traj_k[:, t]-self.xk[:, t], P=self.config.Qk)
+        # Then, calculate the tracking cost associated with how far the
+        # last/final "optimal" state deviates from the last reference state.
+        tracking_cost += cvxpy.quad_form(x=self.ref_traj_k[:, self.config.TK]-self.xk[:, self.config.TK], P=self.config.Qfk) 
 
         # TODO: Objective part 3: Telling CVXPY how to compute the cost
         # associated with changes in the control value vector from one timestep
