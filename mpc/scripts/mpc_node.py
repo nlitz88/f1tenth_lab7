@@ -249,6 +249,28 @@ class MPC(Node):
         for t in range(self.config.TK):
             control_value_change_cost += cvxpy.quad_form(self.uk[:, t+1] - self.uk[:, t], self.config.Rdk)
 
+        uk[5] = [30, 2]
+        uk[6] = [70, 2]
+
+        uk[6] - uk[5] = [40, 0]
+
+
+        x = cvxpy.Variable((1,))
+        y = cvxpy.Variable((1,))
+
+        p = cvxpy.Parameter((1,))
+
+        # Intuiition high level.
+        objective_function = x + y*p @ x 
+        objective_function = x**2 + y
+        objective_function = R((uk[t+1] - uk[t])**2)
+
+        self.MPC_prob = cvxpy.Problem(cvxpy.Minimize(objective), constraints)
+
+
+        # What's really going on under the hood.
+
+
         # The cost we want to minimize.
         # IS THIS RIGHT?
         objective = control_value_cost + tracking_cost + control_value_change_cost
