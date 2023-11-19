@@ -22,6 +22,7 @@
   <depend>tf2_ros</depend>
   <depend>python3-cvxpy-pip</depend>
   <depend>python3-numba</depend>
+  <depend>python-transforms3d-pip</depend>
 
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_lint_common</test_depend>
