@@ -226,10 +226,11 @@ class MPC(Node):
         # of the function (depending on the cost function's curvature). See
         # https://www.cvxpy.org/tutorial/dcp/index.html#disciplined-convex-programming
         
-
         # TODO: Objective part 1: Influence of the control inputs: Inputs u
         # multiplied by the penalty R
-       
+        control_value_cost = 0
+        for t in range(self.config.TK):
+            control_value_cost += cvxpy.quad_form(x=self.uk[:, t], P=self.config.Rk)
 
         # TODO: Objective part 2: Deviation of the vehicle from the reference
         # trajectory weighted by Q, including final Timestep T weighted by Qf
