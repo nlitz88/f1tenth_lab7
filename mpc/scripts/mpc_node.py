@@ -308,122 +308,30 @@ class MPC(Node):
         #       conform to the system model--meaning the uk and xk that are
         #       computed will be kinematically feasible.
 
-        # NOTE: I FEEL LIKE THIS IS WRONG--NEED TO FIX THIS CONSTRAINT IN
-        # PARTICULAR.
-        # I.e., self.Ak_--doesn't that come out of block_diag? If I do it via
-        # this for loop, won't I need to slice self.Ak_ so that I only get the
-        # "t-th" A-matrix from the blocked version.
-        # OR, I could flatten xk and multiply it with Ak_ outside of the for
-        # loop. Same goes for Bk and C I guess.
-        system_model_constraints = []
+        # NOTE: This could be wrong, depending on how Ak_ and Bk_ are really
+        # laid out in memory.
+
         for t in range(self.config.TK):
-            system_model_constraints.append(self.xk[:, t+1] == self.Ak_ @ self.xk[:, t] + self.Bk_ @ self.uk[:, t] + self.Ck_)
-        
-        # NOTE: Potential problem, though: For a given predicted state xk[i],
-        # don't we only want to constrain that to the ith A matrix?? Hard to do
-        # though, as the ith A matrix is wrapped up in a block_diag structure,
-        # right?? If this is true, then maybe we'd have something like this:
-        for i in range(self.config.TK):
-            # Get the ith "A" matrix out of the block representation of A.
-            a_i = self.Ak_[self.config.NXK*i:self.config.NXK*i + self.config.NXK - 1]
-            new_constraint = self.xk[:i+1] == a_i @ self.xk[:, i]
-            constraints.append()
+            # Get the "t-th" a and b matrices from the block versions above
+            a_i = self.Ak_[self.config.NXK*t:self.config.NXK*t + self.config.NXK - 1, self.config.NXK*t:self.config.NXK*t + self.config.NXK - 1]
+            b_i = self.Bk_[self.config.NU*t:self.config.NU*t + self.config.NU - 1, self.config.NU*t:self.config.NU*t + self.config.NU - 1]
+            c_i = self.Ck_[self.config.NXK*t:self.config.NXK*t:self.config.NXK*t + self.config.NXK - 1]
+            # Define the "t-th" component/constraint of the system / state
+            # model.
+            constraints.append(self.xk[:, t+1] == a_i @ self.xk[:, t] + b_i @ self.uk[:, t] + c_i)
 
         # NOTE Only problem with this, however, is that after getting "blocked,"
         # the A-matrix gets put into a sparse representation from
         # scipy--therefore, I don't think indexing in this way is going to work.
+        # NOTE BUT--we reshape back to mxn, so I feel like that means it IS IN
+        # that block form somehow still?
 
         # Is there a more compact of making this work?
-        
-        # NOTE: I still don't think the original way I did it was correct,
-        # either. That way says "take this singular state vector and multiply it
-        # across all N A matrices"--which doesn't make sense, unless there's
-        # some way of just isolating that particular state vector and
-        # encapsulating it in a vector of the original length.
-
-        # NOTE: If the above case isn't true, then maybe we just have to
-        # constrain each of the blocked matrices individually? I.e., 
-
-        # Actually, the model's A matrices aren't just produced above, but they
-        # actually produced the A,B,C matrices evalauted over multiple
-        # timesteps. How does that make any sense? Wouldn't the state model not
-        # change? 
-
-        # I.e., A_block is initially created as a huge matrix, where there is a
-        # smaller A matrix at a particular timestep, and the next timestep's
-        # followed down and to the right from this one. 
-
-        # The linearized (vehicle) state model is produced/provided above via
-        # the get_model_matrix function. Each is provided as a CVXPY parameter.
-
-        # Think elementwise how these constraints work. Each row represents the
-        # constraint on each of the variables within our vehicle's state. I.e.,
-        # one row is x-position, one row is y-position, etc.
-
-        # AND, the relationship between the next state variable value and its
-        # current value and control input are encoded in the coefficients of the
-        # A, B, and C matrices. 
-
-        # This relationship or equation or function for EACH variable of our
-        # state is essentially a constraint. I.e., you're telling the optimizer
-        # that "hey, whatever value you compute for x-position--you must be able
-        # to obtain it from this equation here!"
-
-        # Each variable's "constraint equation" is, therefore, encoded by one of
-        # the rows across the linearized state model's A, B, and C coefficent
-        # matrices.
-
-        # Also worth explaining is that each state variable may be present on
-        # more than one *other* state variables (from z) and multiple *control
-        # variables* (from u). Therefore, this is why there is a column in A for
-        # each state variable in z--because there's a possibility that a state
-        # variable is a function of multiple other state variables (and
-        # therefore has some coefficient multiplied by each of them, whether 0
-        # or some other real number).
-
-        # Likewise, for each control variable (in u), there's a possibility that
-        # a state variable is computed as a function of that control variable,
-        # times some weihgt/coefficient. Similiarly, then, there's a column
-        # in the B matrix for every control variable in our vector u, so as to
-        # allow each state variable's row in B to contain the coefficients that
-        # each state variable's equation uses to scale each control variable by
-        # in the computation of that state variable (just like in A but this
-        # time with control variables).
-
-        # THEN, one step further: Rather than leaving A, B, and C as just normal
-        # matrices--they take them and create diagonal versions of them. WHAT IS
-        # THE LOGIC IN DOING THIS?
-        
-        # I think it has to do with how constraints are evaluated elementwise
-        # when provided as matrices.
-        # https://www.cvxpy.org/examples/basic/quadratic_program.html (see "The
-        # inequality constraint is elementwise.")
-
-        # Therefore, would we get something like:
-        # A @ z = z ?????? 
-        # AND
-        # B @ u = z ???? That doesn't make sense though.
-        # OR
-        # A @ z + B @u + C = z????? Not even sure if that makes sense.
-
-        # NEED TO LOOK UP AND UNDERSTAND WHAT CVXPY'S "@" OPERATOR DOES!!
-
-        # So, we actually get these linearized, descritized vehicle model
-        # equations (in the form of A, B, and C matrices) from the
-        # "get_model_matrix" helper function above.
-
-        # Dvij explained that to "linearize" these models, it's nothing
-        # fancy-- x' = cos(theta), but to linearize this, we can just make a
-        # linear approximation of the function at some point (theta), which will
-        # just give us the tangent line at that theta == a linear function.
-
-        # To descritize the function--that I'm still not sure of. So, if it's
-        # just a matter of taking that tangent line and turning it into a
-        # "discrete" function, then I think that's just a matter of "sampling
-        # points" along that tangent line--I.e., computing values at each of the
-        # discrete timesteps along the tangent line?? Or doing this using the
-        # slope? Something like that. Look at their function to figure out how
-        # this is done.
+        # What if we just multiplied the diagonal Ak_ matrix by a flattened
+        # version of x? If you did this, you'd have to reshape the result--which
+        # is fine, but that doesn't really feel any cleaner than what I did
+        # above.
+        # constraints.append()
         
         # TODO: Constraint part 2:
         #       Add constraints on steering, change in steering angle
@@ -462,7 +370,9 @@ class MPC(Node):
             constraints.append((self.xk[2,i+1] - self.xk[2,i])/self.config.DTK <= self.config.MAX_ACCEL)
 
         # Create the optimization problem in CVXPY and setup the workspace
-        # Optimization goal: minimize the objective function
+        # Optimization goal (I.e., the "objective"): Find the values of xk and
+        # uk that minimize the value of the cost_function, subject to the list
+        # of constraints.
         self.MPC_prob = cvxpy.Problem(cvxpy.Minimize(cost_function), constraints)
 
     def calc_ref_trajectory(self, state, cx, cy, cyaw, sp):
