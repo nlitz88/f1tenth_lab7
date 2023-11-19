@@ -98,16 +98,20 @@ class MPC(Node):
                                                           callback=self.__pose_callback,
                                                           qos_profile=10)
         
-        self.__path_subscriber = self.create_subscription(msg_type=Path,
-                                                          topic="path",
-                                                          callback=self.__path_callback,
-                                                          qos_profile=10)
+        # self.__path_subscriber = self.create_subscription(msg_type=Path,
+        #                                                   topic="path",
+        #                                                   callback=self.__path_callback,
+        #                                                   qos_profile=10)
         # self.__path = None
         # TODO: TEMPORARILY hardcoding the path into the node so that we have
         # something to work with. In the long run, I really want a separate node
         # to publish a joint trajectory--containing the position of each
         # waypoint, the velocity, and the heading angle/orientation each one
         # should have.
+        # NOTE: Should just run the existing path publisher with this path
+        # anyway, just so that I can tune the controller to better track the
+        # path. I.e., just use the existing path publisher to make the path
+        # visible in RVIZ.
         self.__max_longitudinal_velocity = 4.0
         self.__min_longitudinal_velocity = 0.3
         self.__trajectory = [
@@ -187,57 +191,47 @@ class MPC(Node):
     def __pose_callback(self, pose_msg: PoseStamped) -> None:
 
         # TODO: extract pose from ROS msg
-        vehicle_state = None
+        # vehicle_state = State(x=pose_msg.pose.position.x,
+        #                       y=pose_msg.pose.position.y,
+        #                       v=pose_msg.pose.)
+        # TODO: Update node to receive odometry message instead of pose. I.e.,
+        # we need an estimate of the vehicle's speed--and while you CAN get that
+        # from TF (based on the changes in transformation)--apparently that's
+        # going to be very noisy and not very helpful (unless you'd pass it
+        # through some kind of bayes/kalman filter). Soooo, instead, I think we
+        # need to rely on the same paradigm here where we continously use the
+        # estimated speed from odometry (whether visual, intertial, whatever)
+        # and then correct that based on some sort of localization or GPS or
+        # something like that. Again, I think realistically, all these things
+        # would come out of a KALMAN filter responsible for combining all those
+        # values and spitting out its best estimate of the current pose and
+        # twist???
+        
 
         # TODO: Calculate the next reference trajectory for the next T steps
         #       with current vehicle pose.
         #       ref_x, ref_y, ref_yaw, ref_v are columns of self.waypoints
-        # Extract the ref_x, ref_y, ref_yaw, and ref_v from the received path!
-        # Going to have to update my path publisher to support poses and
-        # velocities at each timestep. Can likely get this most easily from the
-        # clicked point node.
 
-        # Before doing anything, make sure there's a valid path to work with.
-        # Otherwise, just return--can't do anything without a reference
+        # Before doing anything, make sure there's a valid trajectory to work
+        # with. Otherwise, just return--can't do anything without a reference
         # trajectory from planner, as we need a path to track!
-        if self.__path is None:
+        if self.__trajectory is None:
             return
 
         # Otherwise, if we do have a valid path, then extract the x, y, heading
         # angle, and velocity from each waypoint on the path.
-        path_waypoints = []
-        waypoint_x_values = []
-        waypoint_y_values = []
-        waypoint_yaw_values = []
-        waypoint_longitudinal_velocity_values = []
-        for pose in self.__path.poses:
-            pose: PoseStamped
-            waypoint_x_values.append(pose.pose.x)
-            waypoint_y_values.append(pose.pose.y)
-            # Convert quaternion to euler angle to go from quaternion
-            # orientation in waypoint to heading angle.
+        waypoint_x_values = self.__trajectory[:, 0]
+        waypoint_y_values = self.__trajectory[:, 1]
+        waypoint_yaw_values = self.__trajectory[:, 2]
+        waypoint_longitudinal_velocity_values = self.__trajectory[:, 3]
 
-            # waypoint_longitudinal_velocity_values.append(pose.pose.)
-
-            # TODO: So, I'm realizing that I there's no Twist message within the
-            # Path--nor should their be. What I'm looking for is a
-            # JointTrajectory sequence, as I'm specifying more than just
-            # waypoints here.
-
-            # For the time being (and to test the actual MPC controller), I
-            # think it would be wise to just generate the path RIGHT HERE
-            # (hardcode it) and then work on the joint trajectory stuff later.
-
-            # Of course, a situation like this is exactly what pushes you to
-            # learn working with joint trajectories, for example--but given the
-            # time constraints for this project, I REALLY do think it's more
-            # responsible to start testing and working on the MPC controller
-            # first. If I have time, I can neaten things up with the joint
-            # trajectory.
-            pass
-
-        # ref_x, ref_y, ref_yaw, ref_v = (0, 0, 0, 0,)
-        ref_path = self.calc_ref_trajectory(self, vehicle_state, ref_x, ref_y, ref_yaw, ref_v)
+        # Use calc_ref_trajectory to only get a relevant subset of the provided
+        # waypoints from the original trajectory.
+        ref_path = self.calc_ref_trajectory(state=vehicle_state, 
+                                            cx=waypoint_x_values,
+                                            cy=waypoint_y_values,
+                                            cyaw=waypoint_yaw_values,
+                                            sp=waypoint_longitudinal_velocity_values)
         x0 = [vehicle_state.x, vehicle_state.y, vehicle_state.v, vehicle_state.yaw]
 
         # TODO: solve the MPC control problem
