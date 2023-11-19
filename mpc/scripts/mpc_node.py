@@ -307,6 +307,14 @@ class MPC(Node):
         #       constrain the optimization to produce xk and uk values that
         #       conform to the system model--meaning the uk and xk that are
         #       computed will be kinematically feasible.
+
+        # NOTE: I FEEL LIKE THIS IS WRONG--NEED TO FIX THIS CONSTRAINT IN
+        # PARTICULAR.
+        # I.e., self.Ak_--doesn't that come out of block_diag? If I do it via
+        # this for loop, won't I need to slice self.Ak_ so that I only get the
+        # "t-th" A-matrix from the blocked version.
+        # OR, I could flatten xk and multiply it with Ak_ outside of the for
+        # loop. Same goes for Bk and C I guess.
         system_model_constraints = []
         for t in range(self.config.TK):
             system_model_constraints.append(self.xk[:, t+1] == self.Ak_ @ self.xk[:, t] + self.Bk_ @ self.uk[:, t] + self.Ck_)
