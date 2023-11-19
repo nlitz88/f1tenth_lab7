@@ -188,20 +188,6 @@ class MPC(Node):
         self.ref_traj_k = cvxpy.Parameter((self.config.NXK, self.config.TK + 1))
         self.ref_traj_k.value = np.zeros((self.config.NXK, self.config.TK + 1))
 
-        # # Initializes block diagonal form of R = [R, R, ..., R] (NU*T, NU*T)
-        # R_block = block_diag(tuple([self.config.Rk] * self.config.TK))
-
-        # # Initializes block diagonal form of Rd = [Rd, ..., Rd] (NU*(T-1), NU*(T-1))
-        # Rd_block = block_diag(tuple([self.config.Rdk] * (self.config.TK - 1)))
-
-        # # Initializes block diagonal form of Q = [Q, Q, ..., Qf] (NX*T, NX*T)
-        # Q_block = [self.config.Qk] * (self.config.TK)
-        # Q_block.append(self.config.Qfk)
-        # Q_block = block_diag(tuple(Q_block))
-
-        # Formulate and create the finite-horizon optimal control problem (objective function)
-        # The FTOCP has the horizon of T timesteps
-
         # --------------------------------------------------------
         # TODO: Define the objective (cost function) that CVXPY will find values
         # for variables xk and uk to minimize the value of. 
@@ -247,14 +233,13 @@ class MPC(Node):
         # TODO: Objective part 3: Telling CVXPY how to compute the cost
         # associated with changes in the control value vector from one timestep
         # to the next.
-        # NOTE: While we initialize this value to 0 to start, we're building up
-        # a symbollic expression of how cvxpy variables, parameters, and
-        # constants should be used to compute the cost at "solve" time--we're
-        # not computing that sum right now--we're creating a description of how
-        # to do it that CVXPY understands how to carry out.
         control_value_change_cost = 0
         for t in range(self.config.TK):
             control_value_change_cost += cvxpy.quad_form(self.uk[:, t+1] - self.uk[:, t], self.config.Rdk)
+
+        # Add all the above cost function components to the actual cost
+        # function.
+        cost_function = control_value_cost + tracking_cost + control_value_change_cost
 
         # --------------------------------------------------------
 
@@ -318,37 +303,13 @@ class MPC(Node):
         # TODO: Constraint part 1:
         #       Add dynamics constraints to the optimization problem
         #       This constraint should be based on a few variables:
-        #       self.xk, self.Ak_, self.Bk_, self.uk, and self.Ck_
-
-        # Above, the sequence of A matrices are generated (as the vehicle model,
-        # while unchanging, its coefficients that are computed with other state
-        # variables (that do change) change, and therefore the A matrix needs to
-        # be recomputed for each of the time steps)). That is done above and the
-        # resulting A matrices are put together and diagonalized.
-
-        # NOTE: So, one idea is that I have to construct that big matrix
-        # mentioned in the lecture by combining each of the A, B, and C blocks.
-        # Ak_, Bk_, Ck_ are all already in that blocked form individually (I
-        # think, according to that block_diag function). Therefore, we'd just
-        # have to make ONE BIGGER MATRIX out of all those.
-
-        
-        # constraints.append(self.Ak_ @ self.xk <= x_max)
-        # constraints.append(self.Ak_ @ self.xk >= x_min)
-
-        # constraints.append(self.Bk_ @ self.uk <= u_max)
-        # constraints.append(self.Bk_ @ self.uk >= u_min)
-
-        # constraints.append(self.Ck_ @ ????)
-
-        # OR
-
-        # constraints.append(self.Ak_ + self.Bk_ + self.Ck_ @ self.xk) # ????
-
-        # OR:
-
-        for i in range(self.config.TK):
-            constraints.append(self.xk[:, i+1] == self.Ak_ @ self.xk[:, i] + self.Bk_ @ self.uk[:, i] + self.Ck_)
+        #       self.xk, self.Ak_, self.Bk_, self.uk, and self.Ck_. I.e.,
+        #       constrain the optimization to produce xk and uk values that
+        #       conform to the system model--meaning the uk and xk that are
+        #       computed will be kinematically feasible.
+        system_model_constraints = []
+        for t in range(self.config.TK):
+            system_model_constraints.append(self.xk[:, t+1] == self.Ak_ @ self.xk[:, t] + self.Bk_ @ self.uk[:, t] + self.Ck_)
         
         # NOTE: Potential problem, though: For a given predicted state xk[i],
         # don't we only want to constrain that to the ith A matrix?? Hard to do
@@ -494,7 +455,7 @@ class MPC(Node):
 
         # Create the optimization problem in CVXPY and setup the workspace
         # Optimization goal: minimize the objective function
-        self.MPC_prob = cvxpy.Problem(cvxpy.Minimize(objective), constraints)
+        self.MPC_prob = cvxpy.Problem(cvxpy.Minimize(cost_function), constraints)
 
     def calc_ref_trajectory(self, state, cx, cy, cyaw, sp):
         """
