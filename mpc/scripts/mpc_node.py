@@ -6,7 +6,7 @@ import numpy as np
 import rclpy
 from ackermann_msgs.msg import AckermannDrive, AckermannDriveStamped
 from geometry_msgs.msg import PoseStamped
-from nav_msgs.msg import Path
+from nav_msgs.msg import Path, Odometry
 from rclpy.node import Node
 from scipy.linalg import block_diag
 from scipy.sparse import block_diag, csc_matrix
@@ -92,10 +92,9 @@ class MPC(Node):
         # TODO: create ROS subscribers and publishers
         #       use the MPC as a tracker (similar to pure pursuit)
 
-        # TODO: May have to change this to PoseWithCovarianceStamped.
-        self.__pose_subscriber = self.create_subscription(msg_type=PoseStamped,
-                                                          topic="pose",
-                                                          callback=self.__pose_callback,
+        self.__odom_subscriber = self.create_subscription(msg_type=Odometry,
+                                                          topic="odom",
+                                                          callback=self.__odom_callback,
                                                           qos_profile=10)
         
         # self.__path_subscriber = self.create_subscription(msg_type=Path,
@@ -180,15 +179,15 @@ class MPC(Node):
         # need to run this once in the beginning to initialize everything.
         self.mpc_prob_init()
 
-    def __path_callback(self, path_msg: Path) -> None:
-        """Simple callback to store most recently received path message.
+    # def __path_callback(self, path_msg: Path) -> None:
+    #     """Simple callback to store most recently received path message.
 
-        Args:
-            path_msg (Path): Received Path message.
-        """
-        self.__path = path_msg
+    #     Args:
+    #         path_msg (Path): Received Path message.
+    #     """
+    #     self.__path = path_msg
 
-    def __pose_callback(self, pose_msg: PoseStamped) -> None:
+    def __odom_callback(self, odom_msg: Odometry) -> None:
 
         # TODO: extract pose from ROS msg
         # vehicle_state = State(x=pose_msg.pose.position.x,
@@ -206,7 +205,23 @@ class MPC(Node):
         # would come out of a KALMAN filter responsible for combining all those
         # values and spitting out its best estimate of the current pose and
         # twist???
-        
+        current_speed = np.linalg.norm([odom_msg.twist.twist.linear.x,
+                                        odom_msg.twist.twist.linear.y,
+                                        odom_msg.twist.twist.linear.z])
+        vehicle_state = State(x=odom_msg.pose.pose.position.x,
+                              y=odom_msg.pose.pose.position.y,
+                              v=current_speed,
+                              yaw=odom_msg.twist.twist.angular.)
+        # Okay, before I can do this one part, I need to accomplish a few more
+        # things:
+        # 1. Need to make a temporary odom or pose publisher or something to
+        #    verify the values that I'm computing here. I.e., if I compute the
+        #    euler angle of the twist's orientation, then it better be correct.
+        #    Need some way to verify this. Just think about it--not rocket
+        #    science.
+        # 2. Need to make sure I understand the "angular" value that is
+        #    contained within the ODOM twist message before working with it.
+
 
         # TODO: Calculate the next reference trajectory for the next T steps
         #       with current vehicle pose.
