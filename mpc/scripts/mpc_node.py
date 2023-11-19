@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 import math
 from dataclasses import dataclass, field
-
 import cvxpy
 import numpy as np
 import rclpy
@@ -10,8 +9,7 @@ from geometry_msgs.msg import PoseStamped
 from nav_msgs.msg import Path
 from rclpy.node import Node
 from scipy.linalg import block_diag
-from scipy.sparse import block_diag, csc_matrix, diags
-from sensor_msgs.msg import LaserScan
+from scipy.sparse import block_diag, csc_matrix
 from utils import nearest_point
 
 # TODO CHECK: include needed ROS msg type headers and libraries
@@ -97,7 +95,7 @@ class MPC(Node):
         # TODO: May have to change this to PoseWithCovarianceStamped.
         self.__pose_subscriber = self.create_subscription(msg_type=PoseStamped,
                                                           topic="pose",
-                                                          callback=self.pose_callback,
+                                                          callback=self.__pose_callback,
                                                           qos_profile=10)
         
         self.__path_subscriber = self.create_subscription(msg_type=Path,
@@ -129,8 +127,8 @@ class MPC(Node):
         """
         self.__path = path_msg
 
-    def pose_callback(self, pose_msg):
-        pass
+    def __pose_callback(self, pose_msg: PoseStamped) -> None:
+
         # TODO: extract pose from ROS msg
         vehicle_state = None
 
@@ -141,6 +139,46 @@ class MPC(Node):
         # Going to have to update my path publisher to support poses and
         # velocities at each timestep. Can likely get this most easily from the
         # clicked point node.
+
+        # Before doing anything, make sure there's a valid path to work with.
+        # Otherwise, just return--can't do anything without a reference
+        # trajectory from planner, as we need a path to track!
+        if self.__path is None:
+            return
+
+        # Otherwise, if we do have a valid path, then extract the x, y, heading
+        # angle, and velocity from each waypoint on the path.
+        path_waypoints = []
+        waypoint_x_values = []
+        waypoint_y_values = []
+        waypoint_yaw_values = []
+        waypoint_longitudinal_velocity_values = []
+        for pose in self.__path.poses:
+            pose: PoseStamped
+            waypoint_x_values.append(pose.pose.x)
+            waypoint_y_values.append(pose.pose.y)
+            # Convert quaternion to euler angle to go from quaternion
+            # orientation in waypoint to heading angle.
+
+            # waypoint_longitudinal_velocity_values.append(pose.pose.)
+
+            # TODO: So, I'm realizing that I there's no Twist message within the
+            # Path--nor should their be. What I'm looking for is a
+            # JointTrajectory sequence, as I'm specifying more than just
+            # waypoints here.
+
+            # For the time being (and to test the actual MPC controller), I
+            # think it would be wise to just generate the path RIGHT HERE
+            # (hardcode it) and then work on the joint trajectory stuff later.
+
+            # Of course, a situation like this is exactly what pushes you to
+            # learn working with joint trajectories, for example--but given the
+            # time constraints for this project, I REALLY do think it's more
+            # responsible to start testing and working on the MPC controller
+            # first. If I have time, I can neaten things up with the joint
+            # trajectory.
+            pass
+
         # ref_x, ref_y, ref_yaw, ref_v = (0, 0, 0, 0,)
         ref_path = self.calc_ref_trajectory(self, vehicle_state, ref_x, ref_y, ref_yaw, ref_v)
         x0 = [vehicle_state.x, vehicle_state.y, vehicle_state.v, vehicle_state.yaw]
