@@ -137,6 +137,10 @@ class MPC(Node):
         # TODO: Calculate the next reference trajectory for the next T steps
         #       with current vehicle pose.
         #       ref_x, ref_y, ref_yaw, ref_v are columns of self.waypoints
+        # Extract the ref_x, ref_y, ref_yaw, and ref_v from the received path!
+        # Going to have to update my path publisher to support poses and
+        # velocities at each timestep. Can likely get this most easily from the
+        # clicked point node.
         # ref_x, ref_y, ref_yaw, ref_v = (0, 0, 0, 0,)
         ref_path = self.calc_ref_trajectory(self, vehicle_state, ref_x, ref_y, ref_yaw, ref_v)
         x0 = [vehicle_state.x, vehicle_state.y, vehicle_state.v, vehicle_state.yaw]
@@ -156,6 +160,7 @@ class MPC(Node):
         steer_output = self.odelta[0]
         speed_output = vehicle_state.v + self.oa[0] * self.config.DTK
 
+    # ONLY RUNS ONCE--doesn't get run every time during solving.
     def mpc_prob_init(self):
         """
         Create MPC quadratic optimization problem using cvxpy, solver: OSQP
@@ -196,33 +201,62 @@ class MPC(Node):
 
         # Formulate and create the finite-horizon optimal control problem (objective function)
         # The FTOCP has the horizon of T timesteps
-
-        # IN THIS STEP, we are putting the objective function together. 
-        # QUESTION: Are we computing the cost here? Or are we just writing the
-        # general functionality for what the cost function will be? I feel like
-        # this is where we'd be computing the VALUE of the cost function.
-        # Rather, we're telling CVXPY how to set up the optimization problem.
-        # What I think this really means is using CVXPYs API to configure all
-        # those weight matrices and difference matrices to actually start the
-        # optimization process. I.e., the solver needs the objective function,
-        # all the optimization variables, and all the constraints (whether
-        # represented as scalars, 1D vectors, or matrices) to set everything up,
-        # as that is the format that it maintains everything in when it performs
-        # the optimization process/algorithm.
-        
-
         # --------------------------------------------------------
         # TODO: fill in the objectives here, you should be using
         # cvxpy.quad_form() somehwhere.
+        # This step is basically where we're telling CVXPY how to compute the
+        # cost of the problem and using what variables.
 
-        # TODO: Objective part 1: Influence of the control inputs: Inputs u multiplied by the penalty R
-        control_value_cost = None
+        # TODO: Objective part 1: Influence of the control inputs: Inputs u
+        # multiplied by the penalty R
+        # "u" has the dimensions of NUxN == NUxTK == 2x8. To compute the cost
+        # derived from each control value in u, need to multiply each control
+        # values of each column by their respective weights in R. R has the
+        # dimensions NUxT x NuxT (it's in block form). How can we multiply u by
+        # R? Should I diagonalize uk??? np.diag?
+        # https://www.cvxpy.org/api_reference/cvxpy.atoms.affine.html#diag
+        
+        # Is there a fast way to vectorize this even with "uk" being a CVXPY
+        # variable? Could do this with a for loop I guess.
+        # control_value_cost = np.diag(np.array(self.uk))*R_block
+        # OR
+        # BUT, if I'm just using the value, how would CVXPY know what variable
+        # contributes to this component of the cost??
+        control_value_cost = np.diag(self.uk.value)*R_block
+        # Square
+        # Use quad_form any time you need the xT * xT*P form.
+        # 2x8
 
-        # TODO: Objective part 2: Deviation of the vehicle from the reference trajectory weighted by Q, including final Timestep T weighted by Qf
-        tracking_cost = None
+        # Constructing QP matrix under the hood (when you set up the objective
+        # function). 
 
-        # TODO: Objective part 3: Difference from one control input to the next control input weighted by Rd
-        control_value_change_cost = None
+        # TODO: Objective part 2: Deviation of the vehicle from the reference
+        # trajectory weighted by Q, including final Timestep T weighted by Qf
+        # Have to add two parts here: one is the weights for the terminal state,
+        # and one component for all the rest.
+        # AGAIN: Should we generate 
+        tracking_cost = 0
+        for i in range(self.config.TK):
+
+        tracking_terminal_cost = None
+
+        # TODO: Objective part 3: Difference from one control input to the next
+        # control input weighted by Rd
+        
+        # Telling CVXPY how to compute the cost associated with changes in the
+        # control value vector from one timestep to the next
+        control_value_change_cost = 0
+        for t in range(self.config.TK):
+            control_value_change_cost += cvxpy.quad_form(self.uk[:, t+1] - self.uk[:, t], self.config.Rdk)
+
+        # The cost we want to minimize.
+        # IS THIS RIGHT?
+        objective = control_value_cost + tracking_cost + control_value_change_cost
+
+        qf = cvxpy.quad_form(objective, ????)
+
+        # quad_form == quadratic matrix multiplication
+        # P == cost to assign (weights?)
 
         # --------------------------------------------------------
 
@@ -434,7 +468,7 @@ class MPC(Node):
         constraints.append(max_steering_angle_constraint)
         # The change per unit of time must not exceed the maximum rate of change
         # of the steering angle from one computed steering angle to the next.
-        for i in range(self.config.TK):
+        for i in range(self.config.TK-1):
             new_max_steering_rate_constraint = (self.uk[0:i+1] - self.uk[0:i])/self.config.DTK <= self.config.MAX_DSTEER
             constraints.append(new_max_steering_rate_constraint)
 
