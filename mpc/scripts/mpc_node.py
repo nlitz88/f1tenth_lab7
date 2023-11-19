@@ -177,7 +177,7 @@ class MPC(Node):
         self.uk = cvxpy.Variable(
             (self.config.NU, self.config.TK)
         )
-        objective = 0.0  # Objective value of the optimization problem
+        cost_function = 0.0  # Cost function description that we'll build up below.
         constraints = []  # Create constraints array
 
         # Initialize reference vectors
@@ -188,47 +188,48 @@ class MPC(Node):
         self.ref_traj_k = cvxpy.Parameter((self.config.NXK, self.config.TK + 1))
         self.ref_traj_k.value = np.zeros((self.config.NXK, self.config.TK + 1))
 
-        # Initializes block diagonal form of R = [R, R, ..., R] (NU*T, NU*T)
-        R_block = block_diag(tuple([self.config.Rk] * self.config.TK))
+        # # Initializes block diagonal form of R = [R, R, ..., R] (NU*T, NU*T)
+        # R_block = block_diag(tuple([self.config.Rk] * self.config.TK))
 
-        # Initializes block diagonal form of Rd = [Rd, ..., Rd] (NU*(T-1), NU*(T-1))
-        Rd_block = block_diag(tuple([self.config.Rdk] * (self.config.TK - 1)))
+        # # Initializes block diagonal form of Rd = [Rd, ..., Rd] (NU*(T-1), NU*(T-1))
+        # Rd_block = block_diag(tuple([self.config.Rdk] * (self.config.TK - 1)))
 
-        # Initializes block diagonal form of Q = [Q, Q, ..., Qf] (NX*T, NX*T)
-        Q_block = [self.config.Qk] * (self.config.TK)
-        Q_block.append(self.config.Qfk)
-        Q_block = block_diag(tuple(Q_block))
+        # # Initializes block diagonal form of Q = [Q, Q, ..., Qf] (NX*T, NX*T)
+        # Q_block = [self.config.Qk] * (self.config.TK)
+        # Q_block.append(self.config.Qfk)
+        # Q_block = block_diag(tuple(Q_block))
 
         # Formulate and create the finite-horizon optimal control problem (objective function)
         # The FTOCP has the horizon of T timesteps
+
         # --------------------------------------------------------
-        # TODO: fill in the objectives here, you should be using
-        # cvxpy.quad_form() somehwhere.
-        # This step is basically where we're telling CVXPY how to compute the
-        # cost of the problem and using what variables.
+        # TODO: Define the objective (cost function) that CVXPY will find values
+        # for variables xk and uk to minimize the value of. 
+        #
+        # NOTE that we're not computing a value for objective here. Rather,
+        # we're building up a description / mathematical expression of cvxpy
+        # variables, parameters, and constants to compute the value of the cost
+        # function. I.e., we're telling CVXPY which variable/parameter/constant
+        # values to use and what operations to perform with them.
+        # 
+        # Also NOTE that the (atomic) operations (and aliases of operations)
+        # that we use (provided by cvpyx) will ultimately determine whether the
+        # cost function we develop is convex, concave, or neither. If we use
+        # CVXPY atomic operations, then we can be certain that DCP rules are
+        # followed and that our cost function will be able minimized/maximized.
+        # I.e., if our cost function ends up being convex (gobal minimum, facing
+        # up), our problem's OBJECTIVE will be to MINIMIZE the value of the COST
+        # FUNCTION. If our cost function ends up being concave (global maximum,
+        # "facing down"), the our problem's OBJECTIVE will be to MAXIMIZE the
+        # value of the COST FUNCTION. In both cases, this involves finding the
+        # values of the problem's variables that minimize or maximize the value
+        # of the function (depending on the cost function's curvature). See
+        # https://www.cvxpy.org/tutorial/dcp/index.html#disciplined-convex-programming
+        
 
         # TODO: Objective part 1: Influence of the control inputs: Inputs u
         # multiplied by the penalty R
-        # "u" has the dimensions of NUxN == NUxTK == 2x8. To compute the cost
-        # derived from each control value in u, need to multiply each control
-        # values of each column by their respective weights in R. R has the
-        # dimensions NUxT x NuxT (it's in block form). How can we multiply u by
-        # R? Should I diagonalize uk??? np.diag?
-        # https://www.cvxpy.org/api_reference/cvxpy.atoms.affine.html#diag
-        
-        # Is there a fast way to vectorize this even with "uk" being a CVXPY
-        # variable? Could do this with a for loop I guess.
-        # control_value_cost = np.diag(np.array(self.uk))*R_block
-        # OR
-        # BUT, if I'm just using the value, how would CVXPY know what variable
-        # contributes to this component of the cost??
-        control_value_cost = np.diag(self.uk.value)*R_block
-        # Square
-        # Use quad_form any time you need the xT * xT*P form.
-        # 2x8
-
-        # Constructing QP matrix under the hood (when you set up the objective
-        # function). 
+       
 
         # TODO: Objective part 2: Deviation of the vehicle from the reference
         # trajectory weighted by Q, including final Timestep T weighted by Qf
@@ -237,48 +238,19 @@ class MPC(Node):
         # AGAIN: Should we generate 
         tracking_cost = 0
         for i in range(self.config.TK):
+            pass
 
-        tracking_terminal_cost = None
-
-        # TODO: Objective part 3: Difference from one control input to the next
-        # control input weighted by Rd
-        
-        # Telling CVXPY how to compute the cost associated with changes in the
-        # control value vector from one timestep to the next
+        # TODO: Objective part 3: Telling CVXPY how to compute the cost
+        # associated with changes in the control value vector from one timestep
+        # to the next.
+        # NOTE: While we initialize this value to 0 to start, we're building up
+        # a symbollic expression of how cvxpy variables, parameters, and
+        # constants should be used to compute the cost at "solve" time--we're
+        # not computing that sum right now--we're creating a description of how
+        # to do it that CVXPY understands how to carry out.
         control_value_change_cost = 0
         for t in range(self.config.TK):
             control_value_change_cost += cvxpy.quad_form(self.uk[:, t+1] - self.uk[:, t], self.config.Rdk)
-
-        uk[5] = [30, 2]
-        uk[6] = [70, 2]
-
-        uk[6] - uk[5] = [40, 0]
-
-
-        x = cvxpy.Variable((1,))
-        y = cvxpy.Variable((1,))
-
-        p = cvxpy.Parameter((1,))
-
-        # Intuiition high level.
-        objective_function = x + y*p @ x 
-        objective_function = x**2 + y
-        objective_function = R((uk[t+1] - uk[t])**2)
-
-        self.MPC_prob = cvxpy.Problem(cvxpy.Minimize(objective), constraints)
-
-
-        # What's really going on under the hood.
-
-
-        # The cost we want to minimize.
-        # IS THIS RIGHT?
-        objective = control_value_cost + tracking_cost + control_value_change_cost
-
-        qf = cvxpy.quad_form(objective, ????)
-
-        # quad_form == quadratic matrix multiplication
-        # P == cost to assign (weights?)
 
         # --------------------------------------------------------
 
