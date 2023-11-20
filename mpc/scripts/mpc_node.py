@@ -169,6 +169,8 @@ class MPC(Node):
         # Convert the trajectory to a numpy array.
         self.__trajectory = np.array(self.__trajectory)
 
+        self.get_logger().info(f"Trajectory to follow: {self.__trajectory}")
+
         # Instantiate config dataclass.
         self.config = mpc_config()
         self.odelta = None
@@ -258,7 +260,7 @@ class MPC(Node):
                                             cy=waypoint_y_values,
                                             cyaw=waypoint_yaw_values,
                                             sp=waypoint_longitudinal_velocity_values)
-        self.get_logger().info(f"ref path: {ref_path}")
+        # self.get_logger().info(f"ref path: {ref_path}")
         x0 = [vehicle_state.x, vehicle_state.y, vehicle_state.v, vehicle_state.yaw]
 
         # TODO: solve the MPC control problem
@@ -382,6 +384,7 @@ class MPC(Node):
         # Add all the above cost function components to the actual cost
         # function.
         cost_function = control_value_cost + tracking_cost + control_value_change_cost
+        self.get_logger().info(f"Cost function: {cost_function}")
 
         # # --------------------------------------------------------
 
@@ -493,14 +496,14 @@ class MPC(Node):
         #       Add constraints on steering, change in steering angle
         #       cannot exceed steering angle speed limit. Should be based on:
         #       self.uk, self.config.MAX_DSTEER, self.config.DTK
-        min_steering_angle_constraint = self.uk[0:] >= self.config.MIN_STEER
+        min_steering_angle_constraint = self.uk[1, :] >= self.config.MIN_STEER
         constraints.append(min_steering_angle_constraint)
-        max_steering_angle_constraint = self.uk[0:] <= self.config.MAX_STEER
+        max_steering_angle_constraint = self.uk[1, :] <= self.config.MAX_STEER
         constraints.append(max_steering_angle_constraint)
         # The change per unit of time must not exceed the maximum rate of change
         # of the steering angle from one computed steering angle to the next.
         for t in range(self.config.TK-1):
-            new_max_steering_rate_constraint = (self.uk[0, t+1] - self.uk[0, t])/self.config.DTK <= self.config.MAX_DSTEER
+            new_max_steering_rate_constraint = cvxpy.abs(self.uk[1, t+1] - self.uk[1, t])/self.config.DTK <= self.config.MAX_DSTEER
             constraints.append(new_max_steering_rate_constraint)
 
         # TODO: Constraint part 3:
@@ -522,8 +525,18 @@ class MPC(Node):
         # Add constraint specifying the maximum acceleration--which is
         # essentially just the difference in velocity divided by the time in
         # between each timestep.
-        for t in range(self.config.TK):
-            constraints.append((self.xk[2,t+1] - self.xk[2,t])/self.config.DTK <= self.config.MAX_ACCEL)
+        # TODO: Couldn't we just also add a constraint to our control value?
+        # I.e., the acceleration in uk? We should just try to remove this
+        # constraint altogether for a while. I.e., why do we need to constrain
+        # the change between the velocities if accel is one of our control
+        # values.
+        constraints.append(cvxpy.abs(self.uk[0, :]) <= self.config.MAX_ACCEL)
+        # for t in range(self.config.TK):
+        #     constraints.append(cvxpy.abs(self.xk[2,t+1] - self.xk[2,t])/self.config.DTK <= self.config.MAX_ACCEL)
+
+        self.get_logger().info(f"Constraints for MPC problem:")
+        for constraint in constraints:
+            self.get_logger().info(str(constraint))
 
         # Create the optimization problem in CVXPY and setup the workspace
         # Optimization goal (I.e., the "objective"): Find the values of xk and
@@ -560,9 +573,9 @@ class MPC(Node):
         # based on current velocity, distance traveled on the ref line between time steps
         travel = abs(state.v) * self.config.DTK
         dind = travel / self.config.dlk
-        ind_list = int(ind) + np.insert(
-            np.cumsum(np.repeat(dind, self.config.TK)), 0, 0
-        ).astype(int)
+        # Is dlk supposed to be like the distance between each waypoint? Or
+        # maybe the expected distance expected to travel each timestep.
+        ind_list = int(ind) + np.insert(np.cumsum(np.repeat(dind, self.config.TK)), 0, 0).astype(int)
         ind_list[ind_list >= ncourse] -= ncourse
         ref_traj[0, :] = cx[ind_list]
         ref_traj[1, :] = cy[ind_list]
@@ -746,6 +759,8 @@ class MPC(Node):
         mpc_a, mpc_delta, mpc_x, mpc_y, mpc_yaw, mpc_v = self.mpc_prob_solve(
             ref_path, path_predict, x0
         )
+
+        self.get_logger().info(f"MPC Produced control values: accel: {mpc_a}, steering angle: {mpc_delta}")
 
         return mpc_a, mpc_delta, mpc_x, mpc_y, mpc_yaw, mpc_v, path_predict
 
