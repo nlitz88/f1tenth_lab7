@@ -90,13 +90,16 @@ class MPC(Node):
     """
     def __init__(self):
         super().__init__('mpc')
-        # TODO: create ROS subscribers and publishers
-        #       use the MPC as a tracker (similar to pure pursuit)
 
+        # Create subscriber for car's odometry topic.
         self.__odom_subscriber = self.create_subscription(msg_type=Odometry,
                                                           topic="odom",
                                                           callback=self.__odom_callback,
                                                           qos_profile=10)
+        # Create publisher for drive messages.
+        self.__drive_publisher = self.create_publisher(msg_type=AckermannDriveStamped,
+                                                       topic="drive",
+                                                       qos_profile=10)
         
         # self.__path_subscriber = self.create_subscription(msg_type=Path,
         #                                                   topic="path",
@@ -191,9 +194,7 @@ class MPC(Node):
     def __odom_callback(self, odom_msg: Odometry) -> None:
 
         # TODO: extract pose from ROS msg
-        # vehicle_state = State(x=pose_msg.pose.position.x,
-        #                       y=pose_msg.pose.position.y,
-        #                       v=pose_msg.pose.)
+        
         # TODO: Update node to receive odometry message instead of pose. I.e.,
         # we need an estimate of the vehicle's speed--and while you CAN get that
         # from TF (based on the changes in transformation)--apparently that's
@@ -260,8 +261,8 @@ class MPC(Node):
 
         # TODO: solve the MPC control problem
         (
-            self.oa,
-            self.odelta,
+            oa,
+            odelta,
             ox,
             oy,
             oyaw,
@@ -269,9 +270,29 @@ class MPC(Node):
             state_predict,
         ) = self.linear_mpc_control(ref_path, x0, self.oa, self.odelta)
 
-        # TODO: publish drive message.
-        steer_output = self.odelta[0]
-        speed_output = vehicle_state.v + self.oa[0] * self.config.DTK
+        # Store the optimal acceleration and optimal steering angle sequences
+        # from this most recent solve. These will be used in the next solve to
+        # compute the linearized state model over TK timesteps!
+        self.oa = oa
+        self.odelta = odelta
+
+        # TODO: Grab only the first value in the sequence of TK optimal control
+        # values.
+        # NOTE: We may only be able to control the car's velocity--not its
+        # acceleration. Not sure about this yet.
+        new_acceleration = oa[0]
+        new_steering_angle = odelta[0]
+
+        # Construct and publish a new ackermann drive message with these optimal
+        # control values.
+        new_drive_message = AckermannDriveStamped()
+        new_drive_message.drive.acceleration = new_acceleration
+        new_drive_message.drive.steering_angle = new_steering_angle
+        self.__drive_publisher.publish(new_drive_message)
+
+        # # TODO: publish drive message.
+        # steer_output = self.odelta[0]
+        # speed_output = vehicle_state.v + self.oa[0] * self.config.DTK
 
     # ONLY RUNS ONCE--doesn't get run every time during solving.
     def mpc_prob_init(self):
@@ -673,6 +694,25 @@ class MPC(Node):
         :param od: delta of T steps of last time
         """
 
+        # oa and od are supposed to be what the acceleration and steering angle
+        # (delta) should be through the next TK timesteps. In this case, we're
+        # just going to predict the motion of the vehicle if those control
+        # values were to stay the same. I.e., constant velocity (because
+        # acceleration 0) and zero steering angle. Wouldn't this always produce
+        # the predicted path as a straight line? Well, maybe--but remember--this
+        # IS NOT the trajectory that the solver compares xk to. I.e., the cost
+        # function looks at the reference trajectory, not this predicted
+        # trajectory. This predicted trajectory is ONLY USED to linearize the
+        # state model and generate matrices A, B, and C. This is okay, as these
+        # can be approximately correct.
+        # ACTUALLY, though, I'm now realizing that these are only zero
+        # INITIALLY. In subsequent calls to solve the MPC problem, the next call
+        # will incorporate the previous call's computed optimal control value
+        # sequence --as those are a part of calculating the A and B matrix over
+        # TK timesteps!!
+        # Therefore, by using the previously optimal values, hopefully as time
+        # goes on, our linearized state model becomes a better and better
+        # approximation of the original, nonlinearized state model.
         if oa is None or od is None:
             oa = [0.0] * self.config.TK
             od = [0.0] * self.config.TK
