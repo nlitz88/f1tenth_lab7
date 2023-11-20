@@ -4,9 +4,8 @@ from dataclasses import dataclass, field
 import cvxpy
 import numpy as np
 import rclpy
-from ackermann_msgs.msg import AckermannDrive, AckermannDriveStamped
-from geometry_msgs.msg import PoseStamped
-from nav_msgs.msg import Path, Odometry
+from ackermann_msgs.msg import AckermannDriveStamped
+from nav_msgs.msg import Odometry
 from rclpy.node import Node
 from scipy.linalg import block_diag
 from scipy.sparse import block_diag, csc_matrix
@@ -176,6 +175,8 @@ class MPC(Node):
         self.oa = None
         self.init_flag = 0
 
+        self.get_logger().info(f"Made it this far in initialization!")
+
         # initialize MPC problem
         # This sets up (defines/initializes) the linearized vehicle model, sets
         # up all other (not part of the vehicle model) linearized constraints,
@@ -192,6 +193,8 @@ class MPC(Node):
     #     self.__path = path_msg
 
     def __odom_callback(self, odom_msg: Odometry) -> None:
+
+        self.get_logger().info("Received new odom message!!!")
 
         # TODO: extract pose from ROS msg
         
@@ -730,9 +733,10 @@ class MPC(Node):
 
 def main(args=None):
     rclpy.init(args=args)
-    print("MPC Initialized")
     mpc_node = MPC()
     rclpy.spin(mpc_node)
-
     mpc_node.destroy_node()
     rclpy.shutdown()
+
+if __name__ == "__main__":
+    main()
