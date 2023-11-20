@@ -277,6 +277,12 @@ class MPC(Node):
         self.oa = oa
         self.odelta = odelta
 
+        # TODO Construct and publish a new ackermann drive message with these
+        # optimal control values--but only if the solve was successful.
+        if oa is None or odelta is None:
+            self.get_logger().error(f"Failed to solve MPC problem -- no drive message published.")
+            return
+
         # TODO: Grab only the first value in the sequence of TK optimal control
         # values.
         # NOTE: We may only be able to control the car's velocity--not its
@@ -284,8 +290,6 @@ class MPC(Node):
         new_acceleration = oa[0]
         new_steering_angle = odelta[0]
 
-        # Construct and publish a new ackermann drive message with these optimal
-        # control values.
         new_drive_message = AckermannDriveStamped()
         new_drive_message.drive.acceleration = new_acceleration
         new_drive_message.drive.steering_angle = new_steering_angle
@@ -402,8 +406,8 @@ class MPC(Node):
         B_block = block_diag(tuple(B_block))
         # C_block = np.array(C_block)
         # TODO JUST FOR NOW, going to try to form C_block as a 2D array to match
-        # A and B.
-        C_block = np.reshape(np.array(C_block), (4, -1))
+        # A and B. C should be NXKxTK--that's what this reshape accomplishes.
+        C_block = np.reshape(np.array(C_block), (self.config.NXK, -1), order='F')
 
         # [AA] Sparse matrix to CVX parameter for proper stuffing
         # Reference: https://github.com/cvxpy/cvxpy/issues/1159#issuecomment-718925710
@@ -671,7 +675,8 @@ class MPC(Node):
 
         A_block = block_diag(tuple(A_block))
         B_block = block_diag(tuple(B_block))
-        C_block = np.array(C_block)
+        # C_block = np.array(C_block)
+        C_block = np.reshape(np.array(C_block), (self.config.NXK, -1), order='F')
 
         self.Annz_k.value = A_block.data
         self.Bnnz_k.value = B_block.data
@@ -683,10 +688,8 @@ class MPC(Node):
         # Solver selections: cvxpy.OSQP; cvxpy.GUROBI
         self.MPC_prob.solve(solver=cvxpy.OSQP, verbose=False, warm_start=True)
 
-        if (
-            self.MPC_prob.status == cvxpy.OPTIMAL
-            or self.MPC_prob.status == cvxpy.OPTIMAL_INACCURATE
-        ):
+        if (self.MPC_prob.status == cvxpy.OPTIMAL or self.MPC_prob.status == cvxpy.OPTIMAL_INACCURATE):
+            self.get_logger().info(f"CVXPY finished with status: {str(self.MPC_prob.status)}")
             ox = np.array(self.xk.value[0, :]).flatten()
             oy = np.array(self.xk.value[1, :]).flatten()
             ov = np.array(self.xk.value[2, :]).flatten()
@@ -695,7 +698,7 @@ class MPC(Node):
             odelta = np.array(self.uk.value[1, :]).flatten()
 
         else:
-            print("Error: Cannot solve mpc..")
+            self.get_logger().warning(f"Error: Cannot solve mpc..status: {str(self.MPC_prob.status)}")
             oa, odelta, ox, oy, oyaw, ov = None, None, None, None, None, None
 
         return oa, odelta, ox, oy, oyaw, ov
