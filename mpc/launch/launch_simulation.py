@@ -26,7 +26,7 @@ def generate_launch_description():
     path_file_publisher_node = Node(
         package="pure_pursuit",
         executable="path_publisher_node.py",
-        parameters=[simulation_params],
+        parameters=[simulation_params]
         # remappings=[]
     )
     # pure_pursuit_node = Node(
@@ -48,6 +48,7 @@ def generate_launch_description():
     # ld.add_action(pose_publisher_node)
     ld.add_action(path_file_publisher_node)
     # ld.add_action(pure_pursuit_node)
+    ld.add_action(mpc_node)
 
     # Return the newly created launch description.
     return ld

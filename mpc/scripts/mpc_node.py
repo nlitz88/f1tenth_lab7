@@ -10,7 +10,7 @@ from nav_msgs.msg import Path, Odometry
 from rclpy.node import Node
 from scipy.linalg import block_diag
 from scipy.sparse import block_diag, csc_matrix
-from utils import nearest_point
+from mpc.mpc_utils import nearest_point
 from transforms3d.euler import quat2euler
 
 # TODO CHECK: include needed ROS msg type headers and libraries
