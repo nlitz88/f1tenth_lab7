@@ -206,23 +206,31 @@ class MPC(Node):
         # would come out of a KALMAN filter responsible for combining all those
         # values and spitting out its best estimate of the current pose and
         # twist???
-        current_speed = np.linalg.norm([odom_msg.twist.twist.linear.x,
-                                        odom_msg.twist.twist.linear.y,
-                                        odom_msg.twist.twist.linear.z])
+        # NOTE: I actually probably don't need to take the norm of this vector.
+        # Rather, I think because this is an ackerman vehicle, from the
+        # perspective of the base_link, it's ONLY ever going to have velocity in
+        # the x direction--however, I'm a little fuzzy on this, so it'd be nice
+        # to clarify.
+        # current_speed = np.linalg.norm([odom_msg.twist.twist.linear.x,
+        #                                 odom_msg.twist.twist.linear.y,
+        #                                 odom_msg.twist.twist.linear.z])
+        current_longitudinal_velocity = odom_msg.twist.twist.linear.x
+        # TODO: Extract Roll, Pitch, and Yaw of the base_link's frame with
+        # respect to the parent frame. Have to construct the quaternian in the
+        # format the transforms3d function is expecting (w,x,y,z). In this case,
+        # only really care about heading angle==yaw.
+        orientation_quat = (
+            odom_msg.pose.pose.orientation.w,
+            odom_msg.pose.pose.orientation.x,
+            odom_msg.pose.pose.orientation.y,
+            odom_msg.pose.pose.orientation.z
+        )
+        _, _, yaw = quat2euler(quaternion=orientation_quat)
+        
         vehicle_state = State(x=odom_msg.pose.pose.position.x,
                               y=odom_msg.pose.pose.position.y,
-                              v=current_speed,
-                              yaw=odom_msg.twist.twist.angular.)
-        # Okay, before I can do this one part, I need to accomplish a few more
-        # things:
-        # 1. Need to make a temporary odom or pose publisher or something to
-        #    verify the values that I'm computing here. I.e., if I compute the
-        #    euler angle of the twist's orientation, then it better be correct.
-        #    Need some way to verify this. Just think about it--not rocket
-        #    science.
-        # 2. Need to make sure I understand the "angular" value that is
-        #    contained within the ODOM twist message before working with it.
-
+                              v=current_longitudinal_velocity,
+                              yaw=yaw)
 
         # TODO: Calculate the next reference trajectory for the next T steps
         #       with current vehicle pose.
@@ -231,8 +239,8 @@ class MPC(Node):
         # Before doing anything, make sure there's a valid trajectory to work
         # with. Otherwise, just return--can't do anything without a reference
         # trajectory from planner, as we need a path to track!
-        if self.__trajectory is None:
-            return
+        # if self.__trajectory is None:
+        #     return
 
         # Otherwise, if we do have a valid path, then extract the x, y, heading
         # angle, and velocity from each waypoint on the path.

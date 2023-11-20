@@ -29,23 +29,23 @@ foreach(PACKAGE
 
 endforeach()
 
-# Include Cpp "include" directory
-include_directories(include)
-include_directories(
-  ${EIGEN3_INCLUDE_DIRS}
-)
+# # Include Cpp "include" directory
+# include_directories(include)
+# include_directories(
+#   ${EIGEN3_INCLUDE_DIRS}
+# )
 
-# Create Cpp executable
-add_executable(mpc_node src/mpc_node.cpp)
+# # Create Cpp executable
+# add_executable(mpc_node src/mpc_node.cpp)
 
-ament_target_dependencies(mpc_node 
-  rclcpp geometry_msgs ackermann_msgs nav_msgs sensor_msgs std_msgs visualization_msgs tf2_ros
-)
+# ament_target_dependencies(mpc_node 
+#   rclcpp geometry_msgs ackermann_msgs nav_msgs sensor_msgs std_msgs visualization_msgs tf2_ros
+# )
 
-# Install Cpp executables
-install(TARGETS
-  mpc_node
-  DESTINATION lib/${PROJECT_NAME})
+# # Install Cpp executables
+# install(TARGETS
+#   mpc_node
+#   DESTINATION lib/${PROJECT_NAME})
 
 # Install Python modules
 ament_python_install_package(${PROJECT_NAME})
@@ -54,6 +54,18 @@ ament_python_install_package(${PROJECT_NAME})
 install(PROGRAMS
   scripts/mpc_node.py
   DESTINATION lib/${PROJECT_NAME}
+)
+
+# Per https://roboticsbackend.com/ros2-yaml-params/#Why_using_YAML_for_ROS2_params
+# Install launch files in share directory.
+install(DIRECTORY
+  launch
+  DESTINATION share/${PROJECT_NAME}
+)
+# Install config files in share directory.
+install(DIRECTORY
+  config
+  DESTINATION share/${PROJECT_NAME}
 )
 
 if(BUILD_TESTING)
