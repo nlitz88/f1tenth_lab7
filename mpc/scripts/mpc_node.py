@@ -89,7 +89,7 @@ class MPC(Node):
     This is just a template, you are free to implement your own node!
     """
     def __init__(self):
-        super().__init__('mpc_node')
+        super().__init__('mpc')
         # TODO: create ROS subscribers and publishers
         #       use the MPC as a tracker (similar to pure pursuit)
 
