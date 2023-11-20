@@ -491,6 +491,9 @@ class MPC(Node):
         # # is fine, but that doesn't really feel any cleaner than what I did
         # # above.
         # # constraints.append()
+        # This actually isn't that problematic, though, as you can just make the
+        # LEFT SIDE of the equation == to the shape of the result so that they
+        # match using cvxpy.vec. That's probably the best way to do it.
         
         # TODO: Constraint part 2:
         #       Add constraints on steering, change in steering angle
