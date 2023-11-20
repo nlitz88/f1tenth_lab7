@@ -492,8 +492,8 @@ class MPC(Node):
         constraints.append(max_steering_angle_constraint)
         # The change per unit of time must not exceed the maximum rate of change
         # of the steering angle from one computed steering angle to the next.
-        for i in range(self.config.TK-1):
-            new_max_steering_rate_constraint = (self.uk[0:i+1] - self.uk[0:i])/self.config.DTK <= self.config.MAX_DSTEER
+        for t in range(self.config.TK-1):
+            new_max_steering_rate_constraint = (self.uk[0, t+1] - self.uk[0, t])/self.config.DTK <= self.config.MAX_DSTEER
             constraints.append(new_max_steering_rate_constraint)
 
         # TODO: Constraint part 3:
@@ -515,8 +515,8 @@ class MPC(Node):
         # Add constraint specifying the maximum acceleration--which is
         # essentially just the difference in velocity divided by the time in
         # between each timestep.
-        for i in range(self.config.TK):
-            constraints.append((self.xk[2,i+1] - self.xk[2,i])/self.config.DTK <= self.config.MAX_ACCEL)
+        for t in range(self.config.TK):
+            constraints.append((self.xk[2,t+1] - self.xk[2,t])/self.config.DTK <= self.config.MAX_ACCEL)
 
         # Create the optimization problem in CVXPY and setup the workspace
         # Optimization goal (I.e., the "objective"): Find the values of xk and
