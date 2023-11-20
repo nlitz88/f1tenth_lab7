@@ -36,12 +36,12 @@ class mpc_config:
     # This is the vector of control input weights. I.e., how much we penalize
     # changing each of our control inputs' values by. 
     Rk: list = field(
-        default_factory=lambda: np.diag([0.01, 100.0])
+        default_factory=lambda: np.diag([0.01, 10.0])
     )  # input cost matrix, penalty for inputs - [accel, steering]
     # This is the vector of control input DIFFERENCE weights. I.e., how much we
     # penalize large changes for each of our control input values. 
     Rdk: list = field(
-        default_factory=lambda: np.diag([0.01, 100.0])
+        default_factory=lambda: np.diag([0.01, 10.0])
     )  # input difference cost matrix, penalty for change of inputs - [accel, steering]
     # This is the vector of weights that defines how much we want to weight each
     # of the state vector differences. I.e., how much cost do we add for large
@@ -50,14 +50,14 @@ class mpc_config:
     # the difference to result in a high cost--therefore hopefully solving for a
     # control value that yields a smaller difference for that variable.
     Qk: list = field(
-        default_factory=lambda: np.diag([13.5, 13.5, 13.0, 5.5])
+        default_factory=lambda: np.diag([80.0, 80.0, 80, 5.5])
     )  # state error cost matrix, for the the next (T) prediction time steps [x, y, v, yaw]
     # This is the vector of weights that defines how important for our state
     # variables are at the end of the time horizon. I.e., if we want the control
     # values we pick to get us as close as possible to the desired position T
     # timesteps away, then more weight should go to those values.
     Qfk: list = field(
-        default_factory=lambda: np.diag([13.5, 13.5, 13.0, 5.5])
+        default_factory=lambda: np.diag([80.0, 80.0, 80, 5.5])
     )  # final state error matrix, penalty  for the final state constraints: [x, y, v, yaw]
     # ---------------------------------------------------
 
@@ -162,7 +162,7 @@ class MPC(Node):
         self.__trajectory[-1].append(yaw_between_points_rad)
 
         # For now, add a constant velocity to each waypoint.
-        self.__temp_longitudinal_velocity = 1.0
+        self.__temp_longitudinal_velocity = 3.0
         for s in range(len(self.__trajectory)):
             self.__trajectory[s].append(self.__temp_longitudinal_velocity)
 
@@ -258,6 +258,7 @@ class MPC(Node):
                                             cy=waypoint_y_values,
                                             cyaw=waypoint_yaw_values,
                                             sp=waypoint_longitudinal_velocity_values)
+        self.get_logger().info(f"ref path: {ref_path}")
         x0 = [vehicle_state.x, vehicle_state.y, vehicle_state.v, vehicle_state.yaw]
 
         # TODO: solve the MPC control problem
@@ -287,11 +288,13 @@ class MPC(Node):
         # values.
         # NOTE: We may only be able to control the car's velocity--not its
         # acceleration. Not sure about this yet.
-        new_acceleration = oa[0]
-        new_steering_angle = odelta[0]
+        # new_acceleration = oa[0]
+        new_speed = vehicle_state.v + self.oa[0] * self.config.DTK
+        new_steering_angle = self.odelta[0]
 
         new_drive_message = AckermannDriveStamped()
-        new_drive_message.drive.acceleration = new_acceleration
+        # new_drive_message.drive.acceleration = new_acceleration
+        new_drive_message.drive.speed = new_speed
         new_drive_message.drive.steering_angle = new_steering_angle
         self.__drive_publisher.publish(new_drive_message)
 
@@ -363,7 +366,7 @@ class MPC(Node):
         # and one component for all the rest.
         # First, calculate the tracking cost for the first 0--T-1 states.
         tracking_cost = 0
-        for i in range(self.config.TK):
+        for t in range(self.config.TK):
             tracking_cost += cvxpy.quad_form(x=self.ref_traj_k[:, t]-self.xk[:, t], P=self.config.Qk)
         # Then, calculate the tracking cost associated with how far the
         # last/final "optimal" state deviates from the last reference state.
@@ -380,117 +383,117 @@ class MPC(Node):
         # function.
         cost_function = control_value_cost + tracking_cost + control_value_change_cost
 
-        # --------------------------------------------------------
+        # # --------------------------------------------------------
 
-        # Constraints 1: Calculate the future vehicle behavior/states based on the vehicle dynamics model matrices
-        # Evaluate vehicle Dynamics for next T timesteps
-        A_block = []
-        B_block = []
-        C_block = []
-        # init path to zeros
-        # Creates 4x9 matrix. 9 columns for 9 timesteps, where each row in each
-        # column is a different state variable.
-        path_predict = np.zeros((self.config.NXK, self.config.TK + 1))
-        # For each timestep, compute a new linearized model matrix set.
-        for t in range(self.config.TK):
-            # Pass the velocity (v at index 2) and heading (phi at index 3) and
-            # the steering angle as 0 into the get_model_matrix function.
-            A, B, C = self.get_model_matrix(
-                path_predict[2, t], path_predict[3, t], 0.0
-            )
-            A_block.append(A)
-            B_block.append(B)
-            C_block.extend(C)
+        # # Constraints 1: Calculate the future vehicle behavior/states based on the vehicle dynamics model matrices
+        # # Evaluate vehicle Dynamics for next T timesteps
+        # A_block = []
+        # B_block = []
+        # C_block = []
+        # # init path to zeros
+        # # Creates 4x9 matrix. 9 columns for 9 timesteps, where each row in each
+        # # column is a different state variable.
+        # path_predict = np.zeros((self.config.NXK, self.config.TK + 1))
+        # # For each timestep, compute a new linearized model matrix set.
+        # for t in range(self.config.TK):
+        #     # Pass the velocity (v at index 2) and heading (phi at index 3) and
+        #     # the steering angle as 0 into the get_model_matrix function.
+        #     A, B, C = self.get_model_matrix(
+        #         path_predict[2, t], path_predict[3, t], 0.0
+        #     )
+        #     A_block.append(A)
+        #     B_block.append(B)
+        #     C_block.extend(C)
 
-        A_block = block_diag(tuple(A_block))
-        B_block = block_diag(tuple(B_block))
-        # C_block = np.array(C_block)
-        # TODO JUST FOR NOW, going to try to form C_block as a 2D array to match
-        # A and B. C should be NXKxTK--that's what this reshape accomplishes.
-        C_block = np.reshape(np.array(C_block), (self.config.NXK, -1), order='F')
+        # A_block = block_diag(tuple(A_block))
+        # B_block = block_diag(tuple(B_block))
+        # # C_block = np.array(C_block)
+        # # TODO JUST FOR NOW, going to try to form C_block as a 2D array to match
+        # # A and B. C should be NXKxTK--that's what this reshape accomplishes.
+        # C_block = np.reshape(np.array(C_block), (self.config.NXK, -1), order='F')
 
-        # [AA] Sparse matrix to CVX parameter for proper stuffing
-        # Reference: https://github.com/cvxpy/cvxpy/issues/1159#issuecomment-718925710
-        m, n = A_block.shape
-        # NOTE: we create these model coefficient matrices as CVXPY parameters,
-        # as they're not Variables whose value we're trying to optimize, but
-        # instead values that we're simply using in the optimization process.
-        self.Annz_k = cvxpy.Parameter(A_block.nnz)
-        data = np.ones(self.Annz_k.size)
-        rows = A_block.row * n + A_block.col
-        cols = np.arange(self.Annz_k.size)
-        Indexer = csc_matrix((data, (rows, cols)), shape=(m * n, self.Annz_k.size))
+        # # [AA] Sparse matrix to CVX parameter for proper stuffing
+        # # Reference: https://github.com/cvxpy/cvxpy/issues/1159#issuecomment-718925710
+        # m, n = A_block.shape
+        # # NOTE: we create these model coefficient matrices as CVXPY parameters,
+        # # as they're not Variables whose value we're trying to optimize, but
+        # # instead values that we're simply using in the optimization process.
+        # self.Annz_k = cvxpy.Parameter(A_block.nnz)
+        # data = np.ones(self.Annz_k.size)
+        # rows = A_block.row * n + A_block.col
+        # cols = np.arange(self.Annz_k.size)
+        # Indexer = csc_matrix((data, (rows, cols)), shape=(m * n, self.Annz_k.size))
 
-        # Setting sparse matrix data
-        self.Annz_k.value = A_block.data
+        # # Setting sparse matrix data
+        # self.Annz_k.value = A_block.data
 
-        # Now we use this sparse version instead of the old A_ block matrix
-        self.Ak_ = cvxpy.reshape(Indexer @ self.Annz_k, (m, n), order="C")
+        # # Now we use this sparse version instead of the old A_ block matrix
+        # self.Ak_ = cvxpy.reshape(Indexer @ self.Annz_k, (m, n), order="C")
 
-        # Same as A
-        m, n = B_block.shape
-        self.Bnnz_k = cvxpy.Parameter(B_block.nnz)
-        data = np.ones(self.Bnnz_k.size)
-        rows = B_block.row * n + B_block.col
-        cols = np.arange(self.Bnnz_k.size)
-        Indexer = csc_matrix((data, (rows, cols)), shape=(m * n, self.Bnnz_k.size))
-        self.Bk_ = cvxpy.reshape(Indexer @ self.Bnnz_k, (m, n), order="C")
-        self.Bnnz_k.value = B_block.data
+        # # Same as A
+        # m, n = B_block.shape
+        # self.Bnnz_k = cvxpy.Parameter(B_block.nnz)
+        # data = np.ones(self.Bnnz_k.size)
+        # rows = B_block.row * n + B_block.col
+        # cols = np.arange(self.Bnnz_k.size)
+        # Indexer = csc_matrix((data, (rows, cols)), shape=(m * n, self.Bnnz_k.size))
+        # self.Bk_ = cvxpy.reshape(Indexer @ self.Bnnz_k, (m, n), order="C")
+        # self.Bnnz_k.value = B_block.data
 
-        # No need for sparse matrices for C as most values are parameters
-        self.Ck_ = cvxpy.Parameter(C_block.shape)
-        self.Ck_.value = C_block
+        # # No need for sparse matrices for C as most values are parameters
+        # self.Ck_ = cvxpy.Parameter(C_block.shape)
+        # self.Ck_.value = C_block
 
-        # -------------------------------------------------------------
-        # TODO: Constraint part 1:
-        #       Add dynamics constraints to the optimization problem
-        #       This constraint should be based on a few variables:
-        #       self.xk, self.Ak_, self.Bk_, self.uk, and self.Ck_. I.e.,
-        #       constrain the optimization to produce xk and uk values that
-        #       conform to the system model--meaning the uk and xk that are
-        #       computed will be kinematically feasible.
+        # # -------------------------------------------------------------
+        # # TODO: Constraint part 1:
+        # #       Add dynamics constraints to the optimization problem
+        # #       This constraint should be based on a few variables:
+        # #       self.xk, self.Ak_, self.Bk_, self.uk, and self.Ck_. I.e.,
+        # #       constrain the optimization to produce xk and uk values that
+        # #       conform to the system model--meaning the uk and xk that are
+        # #       computed will be kinematically feasible.
 
-        # NOTE: This could be wrong, depending on how Ak_ and Bk_ are really
-        # laid out in memory.
-        # NOTE: On that note as well, I need to make sure that A, B, and C are
-        # structured like I'm expecting. I'm expecting to be able to multiply A
-        # by an nx1 matrix like "A @ (nx1)". If A isn't laid out such that each
-        # row is the kth coefficient corresponding to the kth variable of the
-        # state, then this won't work.
+        # # NOTE: This could be wrong, depending on how Ak_ and Bk_ are really
+        # # laid out in memory.
+        # # NOTE: On that note as well, I need to make sure that A, B, and C are
+        # # structured like I'm expecting. I'm expecting to be able to multiply A
+        # # by an nx1 matrix like "A @ (nx1)". If A isn't laid out such that each
+        # # row is the kth coefficient corresponding to the kth variable of the
+        # # state, then this won't work.
 
-        for t in range(self.config.TK):
-            # Get the "t-th" a and b matrices from the block versions above
-            a_t = self.Ak_[self.config.NXK*t:self.config.NXK*t + self.config.NXK, self.config.NXK*t:self.config.NXK*t + self.config.NXK]
-            b_t = self.Bk_[self.config.NXK*t:self.config.NXK*t + self.config.NXK, self.config.NU*t:self.config.NU*t + self.config.NU]
-            # c_t =
-            # self.Ck_[self.config.NXK*t:self.config.NXK*t:self.config.NXK*t +
-            # self.config.NXK]
-            c_t = self.Ck_[:, t]
-            # Define the "t-th" component/constraint of the system / state
-            # model.
-            # Assuming b_t is 4x2 and uk[:, t] is 2x1, that part should be okay
-            # and make sense. I think the issue is in the slicing for b_t and
-            # c_t.
-            constraints.append(self.xk[:, t+1] == a_t @ self.xk[:, t] + b_t @ self.uk[:, t] + c_t)
+        # for t in range(self.config.TK):
+        #     # Get the "t-th" a and b matrices from the block versions above
+        #     a_t = self.Ak_[self.config.NXK*t:self.config.NXK*t + self.config.NXK, self.config.NXK*t:self.config.NXK*t + self.config.NXK]
+        #     b_t = self.Bk_[self.config.NXK*t:self.config.NXK*t + self.config.NXK, self.config.NU*t:self.config.NU*t + self.config.NU]
+        #     # c_t =
+        #     # self.Ck_[self.config.NXK*t:self.config.NXK*t:self.config.NXK*t +
+        #     # self.config.NXK]
+        #     c_t = self.Ck_[:, t]
+        #     # Define the "t-th" component/constraint of the system / state
+        #     # model.
+        #     # Assuming b_t is 4x2 and uk[:, t] is 2x1, that part should be okay
+        #     # and make sense. I think the issue is in the slicing for b_t and
+        #     # c_t.
+        #     constraints.append(self.xk[:, t+1] == a_t @ self.xk[:, t] + b_t @ self.uk[:, t] + c_t)
 
-        # NOTE Only problem with this, however, is that after getting "blocked,"
-        # the A-matrix gets put into a sparse representation from
-        # scipy--therefore, I don't think indexing in this way is going to work.
-        # NOTE BUT--we reshape back to mxn, so I feel like that means it IS IN
-        # that block form somehow still?
+        # # NOTE Only problem with this, however, is that after getting "blocked,"
+        # # the A-matrix gets put into a sparse representation from
+        # # scipy--therefore, I don't think indexing in this way is going to work.
+        # # NOTE BUT--we reshape back to mxn, so I feel like that means it IS IN
+        # # that block form somehow still?
 
-        # Is there a more compact of making this work?
-        # What if we just multiplied the diagonal Ak_ matrix by a flattened
-        # version of x? If you did this, you'd have to reshape the result--which
-        # is fine, but that doesn't really feel any cleaner than what I did
-        # above.
-        # constraints.append()
+        # # Is there a more compact of making this work?
+        # # What if we just multiplied the diagonal Ak_ matrix by a flattened
+        # # version of x? If you did this, you'd have to reshape the result--which
+        # # is fine, but that doesn't really feel any cleaner than what I did
+        # # above.
+        # # constraints.append()
         
         # TODO: Constraint part 2:
         #       Add constraints on steering, change in steering angle
         #       cannot exceed steering angle speed limit. Should be based on:
         #       self.uk, self.config.MAX_DSTEER, self.config.DTK
-        min_steering_angle_constraint = self.uk[0:] <= self.config.MIN_STEER
+        min_steering_angle_constraint = self.uk[0:] >= self.config.MIN_STEER
         constraints.append(min_steering_angle_constraint)
         max_steering_angle_constraint = self.uk[0:] <= self.config.MAX_STEER
         constraints.append(max_steering_angle_constraint)
@@ -662,25 +665,25 @@ class MPC(Node):
     def mpc_prob_solve(self, ref_traj, path_predict, x0):
         self.x0k.value = x0
 
-        A_block = []
-        B_block = []
-        C_block = []
-        for t in range(self.config.TK):
-            A, B, C = self.get_model_matrix(
-                path_predict[2, t], path_predict[3, t], 0.0
-            )
-            A_block.append(A)
-            B_block.append(B)
-            C_block.extend(C)
+        # A_block = []
+        # B_block = []
+        # C_block = []
+        # for t in range(self.config.TK):
+        #     A, B, C = self.get_model_matrix(
+        #         path_predict[2, t], path_predict[3, t], 0.0
+        #     )
+        #     A_block.append(A)
+        #     B_block.append(B)
+        #     C_block.extend(C)
 
-        A_block = block_diag(tuple(A_block))
-        B_block = block_diag(tuple(B_block))
-        # C_block = np.array(C_block)
-        C_block = np.reshape(np.array(C_block), (self.config.NXK, -1), order='F')
+        # A_block = block_diag(tuple(A_block))
+        # B_block = block_diag(tuple(B_block))
+        # # C_block = np.array(C_block)
+        # C_block = np.reshape(np.array(C_block), (self.config.NXK, -1), order='F')
 
-        self.Annz_k.value = A_block.data
-        self.Bnnz_k.value = B_block.data
-        self.Ck_.value = C_block
+        # self.Annz_k.value = A_block.data
+        # self.Bnnz_k.value = B_block.data
+        # self.Ck_.value = C_block
 
         self.ref_traj_k.value = ref_traj
 
