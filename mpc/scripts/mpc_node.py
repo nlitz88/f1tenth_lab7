@@ -37,12 +37,12 @@ class mpc_config:
     # This is the vector of control input weights. I.e., how much we penalize
     # changing each of our control inputs' values by. 
     Rk: list = field(
-        default_factory=lambda: np.diag([0.01, 10.0])
+        default_factory=lambda: np.diag([0.01, 30.0])
     )  # input cost matrix, penalty for inputs - [accel, steering]
     # This is the vector of control input DIFFERENCE weights. I.e., how much we
     # penalize large changes for each of our control input values. 
     Rdk: list = field(
-        default_factory=lambda: np.diag([0.01, 10.0])
+        default_factory=lambda: np.diag([0.01, 30.0])
     )  # input difference cost matrix, penalty for change of inputs - [accel, steering]
     # This is the vector of weights that defines how much we want to weight each
     # of the state vector differences. I.e., how much cost do we add for large
@@ -51,28 +51,28 @@ class mpc_config:
     # the difference to result in a high cost--therefore hopefully solving for a
     # control value that yields a smaller difference for that variable.
     Qk: list = field(
-        default_factory=lambda: np.diag([80.0, 80.0, 80, 5.5])
+        default_factory=lambda: np.diag([80.0, 80.0, 40.0, 30.0])
     )  # state error cost matrix, for the the next (T) prediction time steps [x, y, v, yaw]
     # This is the vector of weights that defines how important for our state
     # variables are at the end of the time horizon. I.e., if we want the control
     # values we pick to get us as close as possible to the desired position T
     # timesteps away, then more weight should go to those values.
     Qfk: list = field(
-        default_factory=lambda: np.diag([80.0, 80.0, 80, 5.5])
+        default_factory=lambda: np.diag([40.0, 40.0, 40, 5.5])
     )  # final state error matrix, penalty  for the final state constraints: [x, y, v, yaw]
     # ---------------------------------------------------
 
     N_IND_SEARCH: int = 20  # Search index number
     DTK: float = 0.1  # time step [s] kinematic
     # dlk: float = 0.03  # dist step [m] kinematic
-    dlk: float = 0.03
+    dlk: float = 0.2
     LENGTH: float = 0.58  # Length of the vehicle [m]
     WIDTH: float = 0.31  # Width of the vehicle [m]
     WB: float = 0.33  # Wheelbase [m]
     MIN_STEER: float = -0.4189  # maximum steering angle [rad]
     MAX_STEER: float = 0.4189  # maximum steering angle [rad]
     MAX_DSTEER: float = np.deg2rad(180.0)  # maximum steering speed [rad/s]
-    MAX_SPEED: float = 1.0  # maximum speed [m/s]
+    MAX_SPEED: float = 2.0  # maximum speed [m/s]
     MIN_SPEED: float = 0.0  # minimum backward speed [m/s]
     MAX_ACCEL: float = 0.25  # maximum acceleration [m/ss]
 
@@ -168,7 +168,7 @@ class MPC(Node):
         self.__trajectory[-1].append(yaw_between_points_rad)
 
         # For now, add a constant velocity to each waypoint.
-        self.__temp_longitudinal_velocity = 1.0
+        self.__temp_longitudinal_velocity = 2.0
         for s in range(len(self.__trajectory)):
             self.__trajectory[s].append(self.__temp_longitudinal_velocity)
 
