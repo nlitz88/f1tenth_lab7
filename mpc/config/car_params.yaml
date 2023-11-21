@@ -1,0 +1,12 @@
+
+path_file_publisher:
+  ros__parameters:
+    # filepath:
+    # "./install/pure_pursuit/share/pure_pursuit/path_files/levine_rough_path.csv"
+    # filepath:
+    # ./install/pure_pursuit/share/pure_pursuit/path_files/aims_path.csv 
+    filepath: ./install/pure_pursuit/share/pure_pursuit/path_files/aims_path.csv
+
+# mpc:
+#   ros__parameters:
+    

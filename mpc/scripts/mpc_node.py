@@ -37,12 +37,12 @@ class mpc_config:
     # This is the vector of control input weights. I.e., how much we penalize
     # changing each of our control inputs' values by. 
     Rk: list = field(
-        default_factory=lambda: np.diag([0.01, 30.0])
+        default_factory=lambda: np.diag([0.01, 40.0])
     )  # input cost matrix, penalty for inputs - [accel, steering]
     # This is the vector of control input DIFFERENCE weights. I.e., how much we
     # penalize large changes for each of our control input values. 
     Rdk: list = field(
-        default_factory=lambda: np.diag([0.01, 30.0])
+        default_factory=lambda: np.diag([0.01, 40.0])
     )  # input difference cost matrix, penalty for change of inputs - [accel, steering]
     # This is the vector of weights that defines how much we want to weight each
     # of the state vector differences. I.e., how much cost do we add for large
@@ -51,7 +51,7 @@ class mpc_config:
     # the difference to result in a high cost--therefore hopefully solving for a
     # control value that yields a smaller difference for that variable.
     Qk: list = field(
-        default_factory=lambda: np.diag([80.0, 80.0, 40.0, 30.0])
+        default_factory=lambda: np.diag([80.0, 80.0, 40.0, 20.0])
     )  # state error cost matrix, for the the next (T) prediction time steps [x, y, v, yaw]
     # This is the vector of weights that defines how important for our state
     # variables are at the end of the time horizon. I.e., if we want the control
