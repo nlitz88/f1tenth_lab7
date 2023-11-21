@@ -5,12 +5,13 @@ import cvxpy
 import numpy as np
 import rclpy
 from ackermann_msgs.msg import AckermannDriveStamped
-from nav_msgs.msg import Odometry
+from nav_msgs.msg import Odometry, Path
+from geometry_msgs.msg import Pose, PoseStamped, Quaternion
 from rclpy.node import Node
 from scipy.linalg import block_diag
 from scipy.sparse import block_diag, csc_matrix
 from mpc.mpc_utils import nearest_point
-from transforms3d.euler import quat2euler
+from transforms3d.euler import quat2euler, euler2quat
 
 # TODO CHECK: include needed ROS msg type headers and libraries
 
@@ -64,7 +65,7 @@ class mpc_config:
     N_IND_SEARCH: int = 20  # Search index number
     DTK: float = 0.1  # time step [s] kinematic
     # dlk: float = 0.03  # dist step [m] kinematic
-    dlk: float = 0.1
+    dlk: float = 0.03
     LENGTH: float = 0.58  # Length of the vehicle [m]
     WIDTH: float = 0.31  # Width of the vehicle [m]
     WB: float = 0.33  # Wheelbase [m]
@@ -100,6 +101,10 @@ class MPC(Node):
         self.__drive_publisher = self.create_publisher(msg_type=AckermannDriveStamped,
                                                        topic="drive",
                                                        qos_profile=10)
+
+        self.__mpc_ref_path_publisher = self.create_publisher(msg_type=Path,
+                                                              topic="mpc_ref_path",
+                                                              qos_profile=10)
         
         # self.__path_subscriber = self.create_subscription(msg_type=Path,
         #                                                   topic="path",
@@ -261,6 +266,27 @@ class MPC(Node):
                                             cy=waypoint_y_values,
                                             cyaw=waypoint_yaw_values,
                                             sp=waypoint_longitudinal_velocity_values)
+
+        # TODO: Publish the x,y waypoints of the reference path. Also, include
+        # the orientation in there.
+        ref_path_msg = Path()
+        ref_path_msg.header.frame_id = odom_msg.header.frame_id
+        for i in range(ref_path.shape[1]):
+            new_pose = Pose()
+            new_pose.position.x = float(ref_path[0, i])
+            new_pose.position.y = float(ref_path[1, i])
+            heading_quat = euler2quat(0, 0, ref_path[3, i])
+            new_quat = Quaternion(x=heading_quat[1],
+                                  y=heading_quat[2],
+                                  z=heading_quat[3],
+                                  w=heading_quat[0])
+            new_pose.orientation = new_quat
+            new_pose_stamped = PoseStamped()
+            new_pose_stamped.pose = new_pose
+            ref_path_msg.poses.append(new_pose_stamped)
+        self.__mpc_ref_path_publisher.publish(ref_path_msg)
+        
+        
         # self.get_logger().info(f"ref path: {ref_path}")
         x0 = [vehicle_state.x, vehicle_state.y, vehicle_state.v, vehicle_state.yaw]
 
