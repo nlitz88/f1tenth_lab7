@@ -58,7 +58,7 @@ class mpc_config:
     # values we pick to get us as close as possible to the desired position T
     # timesteps away, then more weight should go to those values.
     Qfk: list = field(
-        default_factory=lambda: np.diag([40.0, 40.0, 40, 5.5])
+        default_factory=lambda: np.diag([15.0, 15.0, 15.0, 5.5])
     )  # final state error matrix, penalty  for the final state constraints: [x, y, v, yaw]
     # ---------------------------------------------------
 
