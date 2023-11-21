@@ -71,9 +71,9 @@ class mpc_config:
     MIN_STEER: float = -0.4189  # maximum steering angle [rad]
     MAX_STEER: float = 0.4189  # maximum steering angle [rad]
     MAX_DSTEER: float = np.deg2rad(180.0)  # maximum steering speed [rad/s]
-    MAX_SPEED: float = 6.0  # maximum speed [m/s]
+    MAX_SPEED: float = 1.0  # maximum speed [m/s]
     MIN_SPEED: float = 0.0  # minimum backward speed [m/s]
-    MAX_ACCEL: float = 0.5  # maximum acceleration [m/ss]
+    MAX_ACCEL: float = 0.25  # maximum acceleration [m/ss]
 
 
 @dataclass
@@ -411,10 +411,10 @@ class MPC(Node):
 
         A_block = block_diag(tuple(A_block))
         B_block = block_diag(tuple(B_block))
-        # C_block = np.array(C_block)
+        C_block = np.array(C_block)
         # TODO JUST FOR NOW, going to try to form C_block as a 2D array to match
         # A and B. C should be NXKxTK--that's what this reshape accomplishes.
-        C_block = np.reshape(np.array(C_block), (self.config.NXK, -1), order='F')
+        # C_block = np.reshape(np.array(C_block), (self.config.NXK, -1), order='F')
 
         # [AA] Sparse matrix to CVX parameter for proper stuffing
         # Reference: https://github.com/cvxpy/cvxpy/issues/1159#issuecomment-718925710
@@ -465,20 +465,21 @@ class MPC(Node):
         # row is the kth coefficient corresponding to the kth variable of the
         # state, then this won't work.
 
-        for t in range(self.config.TK):
-            # Get the "t-th" a and b matrices from the block versions above
-            a_t = self.Ak_[self.config.NXK*t:self.config.NXK*t + self.config.NXK, self.config.NXK*t:self.config.NXK*t + self.config.NXK]
-            b_t = self.Bk_[self.config.NXK*t:self.config.NXK*t + self.config.NXK, self.config.NU*t:self.config.NU*t + self.config.NU]
-            # c_t =
-            # self.Ck_[self.config.NXK*t:self.config.NXK*t:self.config.NXK*t +
-            # self.config.NXK]
-            c_t = self.Ck_[:, t]
-            # Define the "t-th" component/constraint of the system / state
-            # model.
-            # Assuming b_t is 4x2 and uk[:, t] is 2x1, that part should be okay
-            # and make sense. I think the issue is in the slicing for b_t and
-            # c_t.
-            constraints.append(self.xk[:, t+1] == a_t @ self.xk[:, t] + b_t @ self.uk[:, t] + c_t)
+        # for t in range(self.config.TK):
+        #     # Get the "t-th" a and b matrices from the block versions above
+        #     a_t = self.Ak_[self.config.NXK*t:self.config.NXK*t + self.config.NXK, self.config.NXK*t:self.config.NXK*t + self.config.NXK]
+        #     b_t = self.Bk_[self.config.NXK*t:self.config.NXK*t + self.config.NXK, self.config.NU*t:self.config.NU*t + self.config.NU]
+        #     # c_t =
+        #     # self.Ck_[self.config.NXK*t:self.config.NXK*t:self.config.NXK*t +
+        #     # self.config.NXK]
+        #     c_t = self.Ck_[:, t]
+        #     # Define the "t-th" component/constraint of the system / state
+        #     # model.
+        #     # Assuming b_t is 4x2 and uk[:, t] is 2x1, that part should be okay
+        #     # and make sense. I think the issue is in the slicing for b_t and
+        #     # c_t.
+        #     constraints.append(self.xk[:, t+1] == a_t @ self.xk[:, t] + b_t @ self.uk[:, t] + c_t)
+        constraints.append(cvxpy.vec(self.xk[:, 1:]) == self.Ak_ @ cvxpy.vec(self.xk[:, 0:self.config.TK]) + self.Bk_ @ cvxpy.vec(self.uk) + self.Ck_)
 
         # NOTE Only problem with this, however, is that after getting "blocked,"
         # the A-matrix gets put into a sparse representation from
@@ -695,8 +696,8 @@ class MPC(Node):
 
         A_block = block_diag(tuple(A_block))
         B_block = block_diag(tuple(B_block))
-        # C_block = np.array(C_block)
-        C_block = np.reshape(np.array(C_block), (self.config.NXK, -1), order='F')
+        C_block = np.array(C_block)
+        # C_block = np.reshape(np.array(C_block), (self.config.NXK, -1), order='F')
 
         self.Annz_k.value = A_block.data
         self.Bnnz_k.value = B_block.data
