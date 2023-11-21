@@ -42,7 +42,7 @@ class mpc_config:
     # This is the vector of control input DIFFERENCE weights. I.e., how much we
     # penalize large changes for each of our control input values. 
     Rdk: list = field(
-        default_factory=lambda: np.diag([0.01, 40.0])
+        default_factory=lambda: np.diag([0.01, 60.0])
     )  # input difference cost matrix, penalty for change of inputs - [accel, steering]
     # This is the vector of weights that defines how much we want to weight each
     # of the state vector differences. I.e., how much cost do we add for large
@@ -51,30 +51,30 @@ class mpc_config:
     # the difference to result in a high cost--therefore hopefully solving for a
     # control value that yields a smaller difference for that variable.
     Qk: list = field(
-        default_factory=lambda: np.diag([80.0, 80.0, 40.0, 20.0])
+        default_factory=lambda: np.diag([100.0, 100.0, 40.0, 80.0])
     )  # state error cost matrix, for the the next (T) prediction time steps [x, y, v, yaw]
     # This is the vector of weights that defines how important for our state
     # variables are at the end of the time horizon. I.e., if we want the control
     # values we pick to get us as close as possible to the desired position T
     # timesteps away, then more weight should go to those values.
     Qfk: list = field(
-        default_factory=lambda: np.diag([15.0, 15.0, 15.0, 5.5])
+        default_factory=lambda: np.diag([100.0, 100.0, 40.0, 80.0]) 
     )  # final state error matrix, penalty  for the final state constraints: [x, y, v, yaw]
     # ---------------------------------------------------
 
     N_IND_SEARCH: int = 20  # Search index number
     DTK: float = 0.1  # time step [s] kinematic
     # dlk: float = 0.03  # dist step [m] kinematic
-    dlk: float = 0.20
+    dlk: float = 0.3
     LENGTH: float = 0.58  # Length of the vehicle [m]
     WIDTH: float = 0.31  # Width of the vehicle [m]
     WB: float = 0.33  # Wheelbase [m]
     MIN_STEER: float = -0.4189  # maximum steering angle [rad]
     MAX_STEER: float = 0.4189  # maximum steering angle [rad]
-    MAX_DSTEER: float = np.deg2rad(180.0)  # maximum steering speed [rad/s]
-    MAX_SPEED: float = 2.0  # maximum speed [m/s]
+    MAX_DSTEER: float = np.deg2rad(90.0)  # maximum steering speed [rad/s]
+    MAX_SPEED: float = 4.0  # maximum speed [m/s]
     MIN_SPEED: float = 0.0  # minimum backward speed [m/s]
-    MAX_ACCEL: float = 0.25  # maximum acceleration [m/ss]
+    MAX_ACCEL: float = 1.5  # maximum acceleration [m/ss]
 
 
 @dataclass
@@ -104,6 +104,10 @@ class MPC(Node):
 
         self.__mpc_ref_path_publisher = self.create_publisher(msg_type=Path,
                                                               topic="mpc_ref_path",
+                                                              qos_profile=10)
+
+        self.__mpc_opt_path_publisher = self.create_publisher(msg_type=Path,
+                                                              topic="mpc_opt_path",
                                                               qos_profile=10)
         
         # self.__path_subscriber = self.create_subscription(msg_type=Path,
@@ -214,7 +218,7 @@ class MPC(Node):
         self.__trajectory[-1].append(yaw_between_points_rad)
 
         # For now, add a constant velocity to each waypoint.
-        self.__temp_longitudinal_velocity = 2.0
+        self.__temp_longitudinal_velocity = 3.0
         for s in range(len(self.__trajectory)):
             self.__trajectory[s].append(self.__temp_longitudinal_velocity)
 
@@ -358,6 +362,25 @@ class MPC(Node):
         if oa is None or odelta is None:
             self.get_logger().error(f"Failed to solve MPC problem -- no drive message published.")
             return
+        
+        # TODO: Publish the x,y waypoints of the predicted optimal path from the
+        # latest MPC solve.
+        opt_path_msg = Path()
+        opt_path_msg.header.frame_id = odom_msg.header.frame_id
+        for i in range(ox.shape[0]):
+            new_pose = Pose()
+            new_pose.position.x = float(ox[i])
+            new_pose.position.y = float(oy[i])
+            heading_quat = euler2quat(0, 0, oyaw[i])
+            new_quat = Quaternion(x=heading_quat[1],
+                                  y=heading_quat[2],
+                                  z=heading_quat[3],
+                                  w=heading_quat[0])
+            new_pose.orientation = new_quat
+            new_pose_stamped = PoseStamped()
+            new_pose_stamped.pose = new_pose
+            opt_path_msg.poses.append(new_pose_stamped)
+        self.__mpc_opt_path_publisher.publish(opt_path_msg)
 
         # TODO: Grab only the first value in the sequence of TK optimal control
         # values.
