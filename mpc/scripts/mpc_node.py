@@ -63,7 +63,8 @@ class mpc_config:
 
     N_IND_SEARCH: int = 20  # Search index number
     DTK: float = 0.1  # time step [s] kinematic
-    dlk: float = 0.03  # dist step [m] kinematic
+    # dlk: float = 0.03  # dist step [m] kinematic
+    dlk: float = 0.1
     LENGTH: float = 0.58  # Length of the vehicle [m]
     WIDTH: float = 0.31  # Width of the vehicle [m]
     WB: float = 0.33  # Wheelbase [m]
@@ -72,7 +73,7 @@ class mpc_config:
     MAX_DSTEER: float = np.deg2rad(180.0)  # maximum steering speed [rad/s]
     MAX_SPEED: float = 6.0  # maximum speed [m/s]
     MIN_SPEED: float = 0.0  # minimum backward speed [m/s]
-    MAX_ACCEL: float = 3.0  # maximum acceleration [m/ss]
+    MAX_ACCEL: float = 0.5  # maximum acceleration [m/ss]
 
 
 @dataclass
@@ -162,7 +163,7 @@ class MPC(Node):
         self.__trajectory[-1].append(yaw_between_points_rad)
 
         # For now, add a constant velocity to each waypoint.
-        self.__temp_longitudinal_velocity = 3.0
+        self.__temp_longitudinal_velocity = 1.0
         for s in range(len(self.__trajectory)):
             self.__trajectory[s].append(self.__temp_longitudinal_velocity)
 
