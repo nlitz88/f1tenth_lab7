@@ -23,12 +23,12 @@ def generate_launch_description():
     #                 ("pose", "ego_racecar/pose")]
     #     # arguments=["--ros-args", "--log-level", "debug"],
     # )
-    path_file_publisher_node = Node(
-        package="pure_pursuit",
-        executable="path_publisher_node.py",
-        parameters=[simulation_params]
-        # remappings=[]
-    )
+    # path_file_publisher_node = Node(
+    #     package="pure_pursuit",
+    #     executable="path_publisher_node.py",
+    #     parameters=[simulation_params]
+    #     # remappings=[]
+    # )
     # pure_pursuit_node = Node(
     #     # namespace="ego_racecar",
     #     package="pure_pursuit",
@@ -40,13 +40,13 @@ def generate_launch_description():
     mpc_node = Node(
         package="mpc",
         executable="mpc_node.py",
-        parameters=[simulation_params],
-        remappings=[("odom", "ego_racecar/odom")]
+        parameters=[simulation_params]
+        # remappings=[("odom", "ego_racecar/odom")]
     )
 
     # Add the launch_ros "Node" actions we created.
     # ld.add_action(pose_publisher_node)
-    ld.add_action(path_file_publisher_node)
+    # ld.add_action(path_file_publisher_node)
     # ld.add_action(pure_pursuit_node)
     ld.add_action(mpc_node)
 
