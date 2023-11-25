@@ -208,7 +208,7 @@ class MPC(Node):
         for s in range(len(self.__trajectory) - 1):
             point1 = self.__trajectory[s]
             point2 = self.__trajectory[s+1]
-            yaw_between_points_rad = np.arctan2(point2[1] - point1[1], point2[0] - point1[0])
+            yaw_between_points_rad = -np.arctan2(point2[1] - point1[1], point2[0] - point1[0])
             # Adjust the computed heading angles so that they are all in the
             # range [0, 2pi].
             if yaw_between_points_rad < 0.0:
@@ -219,7 +219,11 @@ class MPC(Node):
         # first point as well.
         point1 = self.__trajectory[-1]
         point2 = self.__trajectory[0]
-        yaw_between_points_rad = np.arctan2(point2[1] - point1[1], point2[0] - point1[0])
+        yaw_between_points_rad = -np.arctan2(point2[1] - point1[1], point2[0] - point1[0])
+        # Adjust the computed heading angles so that they are all in the
+        # range [0, 2pi].
+        if yaw_between_points_rad < 0.0:
+            yaw_between_points_rad += 2*math.pi
         self.__trajectory[-1].append(yaw_between_points_rad)
 
         # For now, add a constant velocity to each waypoint.
