@@ -42,7 +42,7 @@ class mpc_config:
     # This is the vector of control input DIFFERENCE weights. I.e., how much we
     # penalize large changes for each of our control input values. 
     Rdk: list = field(
-        default_factory=lambda: np.diag([0.01, 60.0])
+        default_factory=lambda: np.diag([0.01, 10000.0])
     )  # input difference cost matrix, penalty for change of inputs - [accel, steering]
     # This is the vector of weights that defines how much we want to weight each
     # of the state vector differences. I.e., how much cost do we add for large
@@ -209,7 +209,12 @@ class MPC(Node):
             point1 = self.__trajectory[s]
             point2 = self.__trajectory[s+1]
             yaw_between_points_rad = np.arctan2(point2[1] - point1[1], point2[0] - point1[0])
+            # Adjust the computed heading angles so that they are all in the
+            # range [0, 2pi].
+            if yaw_between_points_rad < 0.0:
+                yaw_between_points_rad += 2*math.pi
             self.__trajectory[s].append(yaw_between_points_rad)
+        
         # Make sure we also compute that angle between the last point and the
         # first point as well.
         point1 = self.__trajectory[-1]
@@ -286,6 +291,10 @@ class MPC(Node):
             odom_msg.pose.pose.orientation.z
         )
         _, _, yaw = quat2euler(quaternion=orientation_quat)
+        # If resulting heading angle is negative, offset it so that it is within
+        # [0,2pi].
+        if yaw < 0.0:
+            yaw += 2*math.pi
         
         vehicle_state = State(x=odom_msg.pose.pose.position.x,
                               y=odom_msg.pose.pose.position.y,
